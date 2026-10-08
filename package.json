@@ -1,0 +1,19 @@
+{
+  "name": "tjabane.thuto.general-agent",
+  "module": "index.ts",
+  "type": "module",
+  "private": true,
+  "workspaces": [
+    "src/*"
+  ],
+  "scripts": {
+    "agent": "bun run --filter @general-agent/agent start",
+    "bench": "bun --env-file=.env run --filter @general-agent/bench start"
+  },
+  "devDependencies": {
+    "@types/bun": "latest"
+  },
+  "peerDependencies": {
+    "typescript": "^7"
+  }
+}

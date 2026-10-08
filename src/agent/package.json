@@ -1,0 +1,12 @@
+{
+  "name": "@general-agent/agent",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "start": "bun run index.ts"
+  },
+  "type": "module",
+  "dependencies": {
+    "openai": "^7.30.1"
+  }
+}
