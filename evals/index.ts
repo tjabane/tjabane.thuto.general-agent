@@ -19,7 +19,7 @@ type GaiaPerformance = {
 };
 
 function createOpenAIAgent(): Agent {
-  const client: LLMClient = new OpenAIClient(GAIA_Prompt, "gpt-4o");
+  const client: LLMClient = new OpenAIClient(GAIA_Prompt, "gpt-5-mini");
   return new Agent(client);
 }
 
@@ -58,7 +58,7 @@ function calculateGaiaPerformance(
 
 if (import.meta.main) {
   const report = await runBenchmark(
-    (createAgent) => runGaiaEvaluation(createAgent),
+    (createAgent) => runGaiaEvaluation(createAgent, 1, 5),
     createOpenAIAgent,
   );
   console.table([calculateGaiaPerformance(report)]);
