@@ -7,12 +7,19 @@
     "src/*"
   ],
   "scripts": {
-    "agent": "bun run --filter @general-agent/agent start"
+    "agent": "bun run --filter @general-agent/agent start",
+    "check": "biome check .",
+    "format": "biome format --write .",
+    "lint": "biome lint ."
   },
   "devDependencies": {
+    "@biomejs/biome": "^2.5.15",
     "@types/bun": "latest"
   },
   "peerDependencies": {
     "typescript": "^7"
+  },
+  "dependencies": {
+    "hyparquet": "^1.31.3"
   }
 }
