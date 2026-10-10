@@ -1,6 +1,7 @@
 import OpenAI from "openai";
+import { zodTextFormat } from "openai/helpers/zod";
+import { type GaiaOutput, GaiaOutputSchema, type Message } from "../model";
 import type { LLMClient } from "./llm-client";
-import type { Message } from "../model";
 
 export class OpenAIClient implements LLMClient {
   private readonly client: OpenAI;
@@ -13,13 +14,20 @@ export class OpenAIClient implements LLMClient {
     this.instruction = instruction;
   }
 
-  async getResponse(messages: Message[]): Promise<string> {
-    const response = await this.client.responses.create({
+  async getResponse(messages: Message[]): Promise<GaiaOutput> {
+    const response = await this.client.responses.parse({
       model: this.model,
       instructions: this.instruction,
       input: messages,
+      text: {
+        format: zodTextFormat(GaiaOutputSchema, "gaia_output"),
+      },
     });
 
-    return response.output_text;
+    if (!response.output_parsed) {
+      throw new Error("The model did not return a structured GAIA output.");
+    }
+
+    return response.output_parsed;
   }
 }

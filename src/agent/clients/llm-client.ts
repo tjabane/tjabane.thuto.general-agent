@@ -1,5 +1,5 @@
-import type { Message } from "../model";
+import type { GaiaOutput, Message } from "../model";
 
 export interface LLMClient {
-    getResponse(messages: Message[]): Promise<string>;
+  getResponse(messages: Message[]): Promise<GaiaOutput>;
 }
