@@ -7,8 +7,7 @@
     "src/*"
   ],
   "scripts": {
-    "agent": "bun run --filter @general-agent/agent start",
-    "bench": "bun --env-file=.env run --filter @general-agent/bench start"
+    "agent": "bun run --filter @general-agent/agent start"
   },
   "devDependencies": {
     "@types/bun": "latest"
