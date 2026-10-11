@@ -18,6 +18,21 @@ class ExecutionContext {
         this.iteration = 0;
         this.result = null;
     }
+
+    /**
+     * Adds an event to the execution context. The event is created with the current runId, the author, and the content.
+     * @param event The event to add to the execution context.
+     */
+    addEvent(event: Event): void {
+        this.events.push(event);
+    }
+
+    /**
+     * Increments the iteration number of the execution context. This is typically called when a new iteration of the run starts.
+     */
+    incrementIteration(): void {
+        this.iteration++;
+    }
 }
 
 /**

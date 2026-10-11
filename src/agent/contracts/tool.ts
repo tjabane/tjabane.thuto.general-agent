@@ -1,3 +1,5 @@
+import type { ExecutionContext } from "./execution-context";
+
 type ToolParameters = {
   type: "object";
   properties: Record<string, unknown>;
@@ -5,9 +7,12 @@ type ToolParameters = {
   additionalProperties?: boolean;
 };
 
-export interface Tool<TInput = unknown, TOutput = unknown> {
-  name: string;
-  description: string;
-  parameters: ToolParameters;
-  execute: (input: TInput) => Promise<TOutput>;
+export abstract class Tool<TInput = unknown, TOutput = unknown> {
+  abstract name: string;
+  abstract description: string;
+  abstract parameters: ToolParameters;
+  abstract execute: (
+    context: ExecutionContext,
+    input: TInput,
+  ) => Promise<TOutput>;
 }

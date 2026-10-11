@@ -2,7 +2,7 @@ import { Agent } from "../../src/agent/agent";
 import { OpenAIClient } from "../../src/agent/clients/openai-client";
 
 const instruction = "You are a helpful assistant. Answer concisely.";
-const message = "Reply with exactly: baseline evaluation passed";
+const message = "hello, how are you?";
 
 if (import.meta.main) {
   const client = new OpenAIClient();
