@@ -1,4 +1,4 @@
-import type { Agent } from "../src/agent/agent";
+import type { Agent } from "../../src/agent/agent";
 import { type GaiaLevel, getGaiaProblems } from "./gaia-dataset";
 import type { GaiaOutput, GaiaProblem } from "./models";
 

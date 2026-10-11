@@ -1,6 +1,6 @@
-import { Agent } from "../src/agent/agent";
-import type { LLMClient } from "../src/agent/clients/llm-client";
-import { OpenAIClient } from "../src/agent/clients/openai-client";
+import { Agent } from "../../src/agent/agent";
+import type { LLMClient } from "../../src/agent/clients/llm-client";
+import { OpenAIClient } from "../../src/agent/clients/openai-client";
 import {
   type AgentFactory,
   GAIA_Prompt,
