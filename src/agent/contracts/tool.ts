@@ -1,7 +1,13 @@
+type ToolParameters = {
+  type: "object";
+  properties: Record<string, unknown>;
+  required?: string[];
+  additionalProperties?: boolean;
+};
 
-
-export interface Tool {
+export interface Tool<TInput = unknown, TOutput = unknown> {
   name: string;
   description: string;
-  execute: (input: string) => Promise<string>;
+  parameters: ToolParameters;
+  execute: (input: TInput) => Promise<TOutput>;
 }
