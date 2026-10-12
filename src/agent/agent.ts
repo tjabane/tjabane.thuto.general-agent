@@ -1,6 +1,7 @@
+import { resolve } from "node:dns";
 import type { LLMClient } from "./clients/llm-client";
 import type { Tool } from "./contracts/tool";
-import type { Message } from "./models/agent";
+import type { Message, ToolCall, ToolResult } from "./models/agent";
 
 export class Agent {
   private readonly messages: Message[];
@@ -17,10 +18,25 @@ export class Agent {
 
   async run(message: string): Promise<unknown> {
     this.messages.push({ role: "user", content: message });
-    return await this.client.generate(
+    const reponse =  await this.client.generate(
       this.instruction,
       this.tools,
       this.messages,
     );
+
+    if(reponse.error)
+      return Response.error;
+    else if(reponse.data)
+    {
+      
+    }
+  }
+
+  /**
+   * Is takes a tool call, finds the right tool from the list and executes it. If the tool fails or it doesnt exist it returns that
+   * error in the result
+   */
+  private Act(action: ToolCall): ToolResult {
+    
   }
 }

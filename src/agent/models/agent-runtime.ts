@@ -1,4 +1,5 @@
 import { RandomUUID } from "node:crypto";
+import type { OutputItem } from "./agent";
 
 
 /**
@@ -45,9 +46,9 @@ class Event {
     readonly runId: string;
     readonly timestamp: number;
     readonly author: string;
-    readonly content: Record<string, any>;
+    readonly content: OutputItem;
 
-    constructor(runId: string, author: string, content: Record<string, any>) {
+    constructor(runId: string, author: string, content: OutputItem) {
         this.Id = RandomUUID();
         this.timestamp = Date.now();
         this.runId = runId;
