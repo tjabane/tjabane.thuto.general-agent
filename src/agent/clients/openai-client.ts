@@ -2,7 +2,7 @@ import OpenAI from "openai";
 import type { Tool } from "../contracts/tool";
 import type { Message, ToolCall } from "../models/agent";
 import type { LLMClient } from "./llm-client";
-import { LLMResponse } from "../models/llm";
+import { LlmRequest, LLMResponse } from "../models/llm";
 
 export class OpenAIClient implements LLMClient {
   private readonly client: OpenAI;
@@ -15,12 +15,9 @@ export class OpenAIClient implements LLMClient {
     this.temperature = temperature;
   }
 
-  async generate(
-    instruction: string,
-    tools: Tool[],
-    messages: Message[],
-  ): Promise<LLMResponse> {
+  async generate(request: LlmRequest): Promise<LLMResponse> {
     try {
+      const {instruction, tools, messages } = request;
       const response = await this.client.responses.create({
         model: this.model,
         instructions: instruction,

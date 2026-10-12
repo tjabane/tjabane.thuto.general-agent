@@ -2,6 +2,7 @@ import { resolve } from "node:dns";
 import type { LLMClient } from "./clients/llm-client";
 import type { Tool } from "./contracts/tool";
 import type { Message, ToolCall, ToolResult } from "./models/agent";
+import { LlmRequest } from "./models/llm";
 
 export class Agent {
   private readonly messages: Message[];
@@ -18,17 +19,14 @@ export class Agent {
 
   async run(message: string): Promise<unknown> {
     this.messages.push({ role: "user", content: message });
-    const reponse =  await this.client.generate(
-      this.instruction,
-      this.tools,
-      this.messages,
-    );
+    const request: LlmRequest = new LlmRequest(this.instruction, this.tools, this.messages);
+    const reponse =  await this.client.generate(request);
 
     if(reponse.error)
       return Response.error;
     else if(reponse.data)
     {
-      
+
     }
   }
 

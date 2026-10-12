@@ -1,5 +1,19 @@
 
-import type { OutputItem } from "./agent";
+import type { Tool } from "../contracts/tool";
+import type { Message, OutputItem } from "./agent";
+
+
+export class LlmRequest {
+    readonly instruction: string;
+    readonly tools: Tool[];
+    readonly messages: Message[];
+
+    constructor(instruction: string, tools: Tool[], messages: Message[] ){
+        this.instruction = instruction;
+        this.messages = messages;
+        this.tools = tools;
+    }
+}
 
 // The client can return either a message or a tool call plus other metadata. How do I abstract the data coming out? What data do I care about...
 export class LLMResponse {
