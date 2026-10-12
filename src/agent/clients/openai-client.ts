@@ -1,7 +1,8 @@
 import OpenAI from "openai";
 import type { Tool } from "../contracts/tool";
-import type { Message } from "../model";
+import type { Message, ToolCall } from "../models/agent";
 import type { LLMClient } from "./llm-client";
+import { LLMResponse } from "../models/llm";
 
 export class OpenAIClient implements LLMClient {
   private readonly client: OpenAI;
@@ -18,15 +19,41 @@ export class OpenAIClient implements LLMClient {
     instruction: string,
     tools: Tool[],
     messages: Message[],
-  ): Promise<unknown> {
-    const response = await this.client.responses.create({
-      model: this.model,
-      instructions: instruction,
-      tools: OpenAIClient.mapToolsToOpenAITools(tools),
-      input: messages,
-      temperature: this.temperature,
-    });
-    return response;
+  ): Promise<LLMResponse> {
+    try {
+      const response = await this.client.responses.create({
+        model: this.model,
+        instructions: instruction,
+        tools: OpenAIClient.mapToolsToOpenAITools(tools),
+        input: messages,
+        temperature: this.temperature,
+      });
+
+      const metadata = { total_tokens: response.usage?.total_tokens };
+      const toolCall = response.output.find(
+        (item) => item.type === "function_call",
+      );
+
+      if (toolCall) {
+        const tool: ToolCall = {
+          name: toolCall.name,
+          call_id: toolCall.call_id,
+          arguments: JSON.parse(toolCall.arguments),
+        };
+        return new LLMResponse(tool, metadata);
+      }
+
+      const message: Message = {
+        role: "assistant",
+        content: response.output_text,
+      };
+      return new LLMResponse(message, metadata);
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
+      console.error(errorMessage);
+      return new LLMResponse({ role: "assistant", content: "" }, {}, errorMessage);
+    }
   }
 
   private static mapToolsToOpenAITools(tools: Tool[]): any[] {

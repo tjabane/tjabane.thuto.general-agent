@@ -7,7 +7,8 @@ type ToolParameters = {
   additionalProperties?: boolean;
 };
 
-export abstract class Tool<TInput = unknown, TOutput = unknown> {
+// biome-ignore lint/suspicious/noExplicitAny: lets Tool[] hold tools with any concrete input/output types
+export abstract class Tool<TInput = any, TOutput = any> {
   abstract name: string;
   abstract description: string;
   abstract parameters: ToolParameters;
