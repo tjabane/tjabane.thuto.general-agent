@@ -7,7 +7,7 @@ import type { OutputItem } from "./agent";
  * the current iteration number, and the final result of the run. The runId is generated when the ExecutionContext is created,
  * and all events in the same run share the same runId.
  */
-class ExecutionContext {
+export class ExecutionContext {
     readonly runId: string;
     events: Event[];
     iteration: number;
@@ -41,7 +41,7 @@ class ExecutionContext {
  * Each event has a unique ID, a timestamp, an author, and content that can be any arbitrary data. Events in the same run 
  * share the same runId, which is generated when the ExecutionContext is created.
  */
-class Event {
+export class Event {
     readonly Id: string;
     readonly runId: string;
     readonly timestamp: number;

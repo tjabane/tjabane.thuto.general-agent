@@ -1,17 +1,19 @@
 
 import type { Tool } from "../contracts/tool";
-import type { Message, OutputItem } from "./agent";
+import type { Message, OutputItem, ToolResult } from "./agent";
 
 
 export class LlmRequest {
     readonly instruction: string;
     readonly tools: Tool[];
     readonly messages: Message[];
+    readonly toolResults: ToolResult[];
 
-    constructor(instruction: string, tools: Tool[], messages: Message[] ){
+    constructor(instruction: string, tools: Tool[], messages: Message[], toolResults: ToolResult[] =[]){
         this.instruction = instruction;
         this.messages = messages;
         this.tools = tools;
+        this.toolResults = toolResults;
     }
 }
 
