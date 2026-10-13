@@ -17,12 +17,24 @@ export class OpenAIClient implements LLMClient {
 
   async generate(request: LlmRequest): Promise<LLMResponse> {
     try {
-      const {instruction, tools, messages } = request;
+      const {instruction, tools, messages, toolResults } = request;
       const response = await this.client.responses.create({
         model: this.model,
         instructions: instruction,
         tools: OpenAIClient.mapToolsToOpenAITools(tools),
-        input: messages,
+        input: toolResults.length > 0
+          ? [
+              ...messages,
+              ...toolResults.map((toolResult) => ({
+                type: "function_call_output" as const,
+                call_id: toolResult.call_id,
+                output: JSON.stringify({
+                  failed: toolResult.failed,
+                  response: toolResult.response,
+                }),
+              })),
+            ]
+          : messages,
         temperature: this.temperature,
       });
 
