@@ -1,6 +1,6 @@
 import OpenAI from "openai";
 import type { Tool } from "../contracts/tool";
-import type { Message, ToolCall } from "../models/agent";
+import { Message, ToolCall } from "../models/agent";
 import type { LLMClient } from "./llm-client";
 import { LlmRequest, LLMResponse } from "../models/llm";
 
@@ -22,9 +22,11 @@ export class OpenAIClient implements LLMClient {
         model: this.model,
         instructions: instruction,
         tools: OpenAIClient.mapToolsToOpenAITools(tools),
+        // The agent executes one tool call per iteration.
+        parallel_tool_calls: false,
+        previous_response_id: request.previousResponseId,
         input: toolResults.length > 0
           ? [
-              ...messages,
               ...toolResults.map((toolResult) => ({
                 type: "function_call_output" as const,
                 call_id: toolResult.call_id,
@@ -38,30 +40,30 @@ export class OpenAIClient implements LLMClient {
         temperature: this.temperature,
       });
 
-      const metadata = { total_tokens: response.usage?.total_tokens };
+      const metadata = {
+        total_tokens: response.usage?.total_tokens,
+        response_id: response.id,
+      };
       const toolCall = response.output.find(
         (item) => item.type === "function_call",
       );
 
       if (toolCall) {
-        const tool: ToolCall = {
-          name: toolCall.name,
-          call_id: toolCall.call_id,
-          arguments: JSON.parse(toolCall.arguments),
-        };
+        const tool = new ToolCall(
+          toolCall.name,
+          toolCall.call_id,
+          JSON.parse(toolCall.arguments),
+        );
         return new LLMResponse(tool, metadata);
       }
 
-      const message: Message = {
-        role: "assistant",
-        content: response.output_text,
-      };
+      const message = new Message("assistant", response.output_text);
       return new LLMResponse(message, metadata);
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : String(error);
       console.error(errorMessage);
-      return new LLMResponse({ role: "assistant", content: "" }, {}, errorMessage);
+      return new LLMResponse(new Message("assistant", ""), {}, errorMessage);
     }
   }
 

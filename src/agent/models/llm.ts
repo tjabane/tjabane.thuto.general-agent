@@ -8,12 +8,14 @@ export class LlmRequest {
     readonly tools: Tool[];
     readonly messages: Message[];
     readonly toolResults: ToolResult[];
+    readonly previousResponseId?: string;
 
-    constructor(instruction: string, tools: Tool[], messages: Message[], toolResults: ToolResult[] =[]){
+    constructor(instruction: string, tools: Tool[], messages: Message[], toolResults: ToolResult[] =[], previousResponseId?: string){
         this.instruction = instruction;
         this.messages = messages;
         this.tools = tools;
         this.toolResults = toolResults;
+        this.previousResponseId = previousResponseId;
     }
 }
 

@@ -1,4 +1,4 @@
-import { RandomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import type { OutputItem } from "./agent";
 
 
@@ -14,7 +14,7 @@ export class ExecutionContext {
     result: string | null;
 
     constructor() {
-        this.runId = RandomUUID();
+        this.runId = randomUUID();
         this.events = [];
         this.iteration = 0;
         this.result = null;
@@ -49,7 +49,7 @@ export class Event {
     readonly content: OutputItem;
 
     constructor(runId: string, author: string, content: OutputItem) {
-        this.Id = RandomUUID();
+        this.Id = randomUUID();
         this.timestamp = Date.now();
         this.runId = runId;
         this.author = author;

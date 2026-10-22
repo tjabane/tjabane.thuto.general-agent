@@ -17,10 +17,10 @@ export class ToolCall {
   call_id: string;
   arguments: any;
 
-  constructor(name: string, call_id: string, arguments: any) {
+  constructor(name: string, call_id: string, args: any) {
     this.name = name;
     this.call_id = call_id;
-    this.arguments = arguments;
+    this.arguments = args;
   }
 }
 
