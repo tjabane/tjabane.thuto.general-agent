@@ -10,6 +10,8 @@
     "agent": "bun run --filter @general-agent/agent start",
     "check": "biome check .",
     "eval:baseline": "bun run evals/baseline/index.ts",
+    "eval:gaia": "bun run evals/gaia/index.ts",
+    "gaia:download": "bun run evals/gaia/download.ts",
     "format": "biome format --write .",
     "lint": "biome lint ."
   },

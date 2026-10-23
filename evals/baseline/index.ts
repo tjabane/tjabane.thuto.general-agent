@@ -1,32 +1,17 @@
 import type { Tool } from "../../src/agent";
 import { Agent } from "../../src/agent/agent";
-import type { LLMClient } from "../../src/agent/clients/llm-client";
-import { OllamaClient } from "../../src/agent/clients/ollama-client";
-import { OpenAIClient } from "../../src/agent/clients/openai-client";
 import { CalculatorTool, WebSearchTool } from "../../src/tools";
+import { createClient } from "../create-client";
 
 const instruction = "You are a helpful assistant. Answer concisely.";
-const message = "What was the population of South Africa according to its 2022 census, and what is that number divided by the country's land area in square kilometres?";
-
-/** Picks the LLM client from LLM_PROVIDER ("openai" or "ollama"). */
-function createClient(): LLMClient {
-  const provider = process.env.LLM_PROVIDER ?? "openai";
-
-  switch (provider) {
-    case "ollama":
-      return new OllamaClient(process.env.OLLAMA_MODEL);
-    case "openai":
-      return new OpenAIClient(process.env.OPENAI_MODEL);
-    default:
-      throw new Error(`Unknown LLM_PROVIDER "${provider}". Use "openai" or "ollama".`);
-  }
-}
+const message =
+  "If Eliud Kipchoge could maintain his record-making marathon pace indefinitely, how many thousand hours would it take him to run the distance between the Earth and the Moon at its closest approach? Please use the minimum perigee value on the Wikipedia page for the Moon when carrying out your calculation. Round your result to the nearest 1000 hours and do not use any comma separators if necessary.";
 
 if (import.meta.main) {
   const client = createClient();
-  const tools: Tool[] = [new CalculatorTool(), new WebSearchTool()]
+  const tools: Tool[] = [new CalculatorTool(), new WebSearchTool()];
   const agent = new Agent(client, instruction, tools);
   const result = await agent.run(message);
   console.dir(result.response, { depth: null });
-  console.dir(result.context.iteration, { depth: null });
+  console.dir(result.context, { depth: null });
 }

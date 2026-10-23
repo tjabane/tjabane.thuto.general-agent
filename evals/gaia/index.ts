@@ -1,65 +1,72 @@
+import { mkdir } from "node:fs/promises";
+import { parseArgs } from "node:util";
 import { Agent } from "../../src/agent/agent";
-import type { LLMClient } from "../../src/agent/clients/llm-client";
-import { OpenAIClient } from "../../src/agent/clients/openai-client";
+import { CalculatorTool, WebSearchTool } from "../../src/tools";
+import { createClient } from "../create-client";
 import {
-  type AgentFactory,
   GAIA_Prompt,
   type GaiaEvaluationReport,
   runGaiaEvaluation,
 } from "./gaia-benchmark";
+import type { GaiaLevel } from "./gaia-dataset";
 
-type Benchmark<TReport> = (createAgent: AgentFactory) => Promise<TReport>;
+const RUNS_DIR = ".data/gaia/runs";
 
-type GaiaPerformance = {
-  totalProblems: number;
-  answerMatches: number;
-  answerAccuracy: string;
-  solvabilityMatches: number;
-  solvabilityAccuracy: string;
-};
-
-function createOpenAIAgent(): Agent {
-  const client: LLMClient = new OpenAIClient(GAIA_Prompt, "gpt-5-mini");
-  return new Agent(client);
+function createGaiaAgent(): Agent {
+  const client = createClient(
+    process.env.GAIA_PROVIDER ?? process.env.LLM_PROVIDER,
+  );
+  return new Agent(
+    client,
+    GAIA_Prompt,
+    [new CalculatorTool(), new WebSearchTool()],
+    20,
+  );
 }
 
-async function runBenchmark<TReport>(
-  benchmark: Benchmark<TReport>,
-  createAgent: AgentFactory,
-): Promise<TReport> {
-  return benchmark(createAgent);
-}
-
-function normalizeAnswer(answer: string): string {
-  return answer.trim().toLocaleLowerCase();
-}
-
-function calculateGaiaPerformance(
-  report: GaiaEvaluationReport,
-): GaiaPerformance {
-  const totalProblems = report.evaluations.length;
-  const answerMatches = report.evaluations.filter(
-    ({ metadata, output }) =>
-      normalizeAnswer(String(metadata["Final answer"])) ===
-      normalizeAnswer(output.final_answer),
-  ).length;
-  const solvabilityMatches = report.evaluations.filter(
-    ({ output }) => output.is_solvable,
-  ).length;
+function summarize({
+  evaluations,
+  skippedWithAttachments,
+}: GaiaEvaluationReport) {
+  const correct = evaluations.filter((evaluation) => evaluation.correct).length;
+  const errors = evaluations.filter((evaluation) => evaluation.error).length;
 
   return {
-    totalProblems,
-    answerMatches,
-    answerAccuracy: `${((answerMatches / totalProblems) * 100).toFixed(1)}%`,
-    solvabilityMatches,
-    solvabilityAccuracy: `${((solvabilityMatches / totalProblems) * 100).toFixed(1)}%`,
+    problems: evaluations.length,
+    correct,
+    accuracy: `${((correct / evaluations.length) * 100).toFixed(1)}%`,
+    errors,
+    skippedWithAttachments,
+    avgIterations: (
+      evaluations.reduce((sum, evaluation) => sum + evaluation.iterations, 0) /
+      evaluations.length
+    ).toFixed(1),
   };
 }
 
 if (import.meta.main) {
-  const report = await runBenchmark(
-    (createAgent) => runGaiaEvaluation(createAgent, 1, 5),
-    createOpenAIAgent,
-  );
-  console.table([calculateGaiaPerformance(report)]);
+  const { values } = parseArgs({
+    options: {
+      level: { type: "string", default: "1" },
+      count: { type: "string", default: "10" },
+      split: { type: "string", default: "validation" },
+      concurrency: { type: "string", default: "3" },
+      attachments: { type: "boolean", default: false },
+    },
+  });
+
+  const report = await runGaiaEvaluation(createGaiaAgent, {
+    level: Number(values.level) as GaiaLevel,
+    count: Number(values.count),
+    split: values.split,
+    concurrency: Number(values.concurrency),
+    includeAttachments: values.attachments,
+  });
+
+  console.table([summarize(report)]);
+
+  await mkdir(RUNS_DIR, { recursive: true });
+  const path = `${RUNS_DIR}/${new Date().toISOString().replace(/[:.]/g, "-")}.json`;
+  await Bun.write(path, JSON.stringify(report, null, 2));
+  console.log(`Report saved to ${path}`);
 }
