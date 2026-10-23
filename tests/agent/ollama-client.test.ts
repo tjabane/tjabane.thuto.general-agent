@@ -31,11 +31,13 @@ function textResponse(content: string) {
   });
 }
 
-function toolCallResponse(name: string, args: Record<string, unknown>) {
+function toolCallResponse(...expressions: string[]) {
   return Response.json({
     message: {
       content: "",
-      tool_calls: [{ function: { name, arguments: args } }],
+      tool_calls: expressions.map((expression) => ({
+        function: { name: "calculator", arguments: { expression } },
+      })),
     },
   });
 }
@@ -96,46 +98,63 @@ describe("OllamaClient", () => {
     expect(response.metadata.response_id).toBeString();
   });
 
-  test("returns a tool call", async () => {
-    mockOllama(toolCallResponse("calculator", { expression: "2 + 2" }));
+  test("returns a tool call as an array", async () => {
+    mockOllama(toolCallResponse("2 + 2"));
     const client = new OllamaClient("test-model");
 
     const response = await client.generate(
       new LlmRequest(instruction, tools, [new Message("user", "2 + 2?")]),
     );
 
-    expect(response.data).toBeInstanceOf(ToolCall);
-    const toolCall = response.data as ToolCall;
-    expect(toolCall.name).toBe("calculator");
-    expect(toolCall.arguments).toEqual({ expression: "2 + 2" });
-    expect(toolCall.call_id).toBeString();
+    const toolCalls = response.data as ToolCall[];
+    expect(toolCalls).toHaveLength(1);
+    expect(toolCalls[0]).toBeInstanceOf(ToolCall);
+    expect(toolCalls[0]?.name).toBe("calculator");
+    expect(toolCalls[0]?.arguments).toEqual({ expression: "2 + 2" });
+    expect(toolCalls[0]?.call_id).toBeString();
   });
 
-  test("continues the conversation with tool results", async () => {
-    mockOllama(
-      toolCallResponse("calculator", { expression: "2 + 2" }),
-      textResponse("2 + 2 is 4."),
-    );
+  test("returns every tool call with a unique call id", async () => {
+    mockOllama(toolCallResponse("2 + 2", "3 * 3"));
     const client = new OllamaClient("test-model");
-    const messages = [new Message("user", "2 + 2?")];
+
+    const response = await client.generate(
+      new LlmRequest(instruction, tools, [new Message("user", "Both?")]),
+    );
+
+    const toolCalls = response.data as ToolCall[];
+    expect(toolCalls.map((toolCall) => toolCall.arguments)).toEqual([
+      { expression: "2 + 2" },
+      { expression: "3 * 3" },
+    ]);
+    expect(new Set(toolCalls.map((toolCall) => toolCall.call_id)).size).toBe(2);
+  });
+
+  test("continues the conversation with every tool result", async () => {
+    mockOllama(toolCallResponse("2 + 2", "3 * 3"), textResponse("4 and 9."));
+    const client = new OllamaClient("test-model");
+    const messages = [new Message("user", "Both?")];
 
     const first = await client.generate(
       new LlmRequest(instruction, tools, messages),
     );
-    const toolCall = first.data as ToolCall;
+    const [sum, product] = first.data as ToolCall[];
     const second = await client.generate(
       new LlmRequest(
         instruction,
         tools,
         messages,
-        [new ToolResult(toolCall.call_id, false, 4)],
+        [
+          new ToolResult(sum?.call_id as string, false, 4),
+          new ToolResult(product?.call_id as string, false, 9),
+        ],
         first.metadata.response_id,
       ),
     );
 
     expect(requests[1]?.body.messages).toEqual([
       { role: "system", content: instruction },
-      { role: "user", content: "2 + 2?" },
+      { role: "user", content: "Both?" },
       {
         role: "assistant",
         content: "",
@@ -146,6 +165,12 @@ describe("OllamaClient", () => {
               arguments: { expression: "2 + 2" },
             },
           },
+          {
+            function: {
+              name: "calculator",
+              arguments: { expression: "3 * 3" },
+            },
+          },
         ],
       },
       {
@@ -153,25 +178,28 @@ describe("OllamaClient", () => {
         tool_name: "calculator",
         content: JSON.stringify({ failed: false, response: 4 }),
       },
+      {
+        role: "tool",
+        tool_name: "calculator",
+        content: JSON.stringify({ failed: false, response: 9 }),
+      },
     ]);
-    expect((second.data as Message).content).toBe("2 + 2 is 4.");
+    expect((second.data as Message).content).toBe("4 and 9.");
   });
 
   test("forgets a conversation once its tool results are sent", async () => {
-    mockOllama(
-      toolCallResponse("calculator", { expression: "2 + 2" }),
-      textResponse("2 + 2 is 4."),
-    );
+    mockOllama(toolCallResponse("2 + 2"), textResponse("2 + 2 is 4."));
     const client = new OllamaClient("test-model");
     const messages = [new Message("user", "2 + 2?")];
     const first = await client.generate(
       new LlmRequest(instruction, tools, messages),
     );
+    const [toolCall] = first.data as ToolCall[];
     const followUp = new LlmRequest(
       instruction,
       tools,
       messages,
-      [new ToolResult((first.data as ToolCall).call_id, false, 4)],
+      [new ToolResult(toolCall?.call_id as string, false, 4)],
       first.metadata.response_id,
     );
 

@@ -17,13 +17,12 @@ export class OpenAIClient implements LLMClient {
 
   async generate(request: LlmRequest): Promise<LLMResponse> {
     try {
-      const {instruction, tools, messages, toolResults } = request;
+      const { instruction, tools, messages, toolResults } = request;
       const response = await this.client.responses.create({
         model: this.model,
         instructions: instruction,
         tools: OpenAIClient.mapToolsToOpenAITools(tools),
-        // The agent executes one tool call per iteration.
-        parallel_tool_calls: false,
+        parallel_tool_calls: true,
         previous_response_id: request.previousResponseId,
         input: toolResults.length > 0
           ? [
@@ -44,24 +43,23 @@ export class OpenAIClient implements LLMClient {
         total_tokens: response.usage?.total_tokens,
         response_id: response.id,
       };
-      const toolCall = response.output.find(
+      const toolCalls = response.output.filter(
         (item) => item.type === "function_call",
       );
 
-      if (toolCall) {
-        const tool = new ToolCall(
-          toolCall.name,
-          toolCall.call_id,
-          JSON.parse(toolCall.arguments),
-        );
-        return new LLMResponse(tool, metadata);
+      if (toolCalls?.length) {
+        const toolRequests = toolCalls.map(tool => new ToolCall(
+          tool.name,
+          tool.call_id,
+          JSON.parse(tool.arguments),
+        ));
+        return new LLMResponse(toolRequests, metadata);
       }
 
       const message = new Message("assistant", response.output_text);
       return new LLMResponse(message, metadata);
     } catch (error) {
-      const errorMessage =
-        error instanceof Error ? error.message : String(error);
+      const errorMessage = error instanceof Error ? error.message : String(error);
       console.error(errorMessage);
       return new LLMResponse(new Message("assistant", ""), {}, errorMessage);
     }

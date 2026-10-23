@@ -71,8 +71,7 @@ export class OllamaClient implements LLMClient {
       }
 
       const body = (await response.json()) as OllamaChatResponse;
-      // The agent executes one tool call per iteration.
-      const toolCall = body.message.tool_calls?.[0];
+      const ollamaToolCalls = body.message.tool_calls ?? [];
       const responseId = randomUUID();
       const metadata = {
         prompt_tokens: body.prompt_eval_count,
@@ -80,28 +79,27 @@ export class OllamaClient implements LLMClient {
         response_id: responseId,
       };
 
-      if (toolCall) {
-        const callId = randomUUID();
+      if (ollamaToolCalls.length > 0) {
+        // Ollama has no call ids, so the client assigns one per call.
+        const toolCalls = ollamaToolCalls.map(
+          ({ function: { name, arguments: args } }) =>
+            new ToolCall(name, randomUUID(), args),
+        );
         this.conversations.set(responseId, {
           messages: [
             ...messages,
             {
               role: "assistant",
               content: body.message.content,
-              tool_calls: [toolCall],
+              tool_calls: ollamaToolCalls,
             },
           ],
-          toolNames: new Map([[callId, toolCall.function.name]]),
+          toolNames: new Map(
+            toolCalls.map((toolCall) => [toolCall.call_id, toolCall.name]),
+          ),
         });
 
-        return new LLMResponse(
-          new ToolCall(
-            toolCall.function.name,
-            callId,
-            toolCall.function.arguments,
-          ),
-          metadata,
-        );
+        return new LLMResponse(toolCalls, metadata);
       }
 
       return new LLMResponse(

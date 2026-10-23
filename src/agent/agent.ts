@@ -46,17 +46,18 @@ export class Agent {
         throw new Error(response.error);
       }
 
-      if (response.data instanceof ToolCall) {
-        const toolResult = await this.Act(context, response.data);
-        context.addEvent(new Event(context.runId, toolResult.type, toolResult));
+      if ( Array.isArray(response.data)) {
+        const toolRequests = response.data.filter((item) => item instanceof ToolCall)
+        const toolResults = await this.act(context, toolRequests);
         request = new LlmRequest(
           this.instruction,
           this.tools,
           this.messages,
-          [toolResult],
+          toolResults,
           response.metadata.response_id,
         );
-      } else if (response.data instanceof Message) {
+      } 
+      else if (response.data instanceof Message) {
         this.messages.push(response.data);
         context.result = response.data.content;
         return new AgentResult(response.data.content, context);
@@ -73,28 +74,29 @@ export class Agent {
    * Is takes a tool call, finds the right tool from the list and executes it. If the tool fails or it doesnt exist it returns that
    * error in the result
    */
-  private async Act(
+  private async act(
     context: ExecutionContext,
-    action: ToolCall,
-  ): Promise<ToolResult> {
-    const tool = this.tools.find((t) => t.name === action.name);
-    if (!tool) {
-      return new ToolResult(
-        action.call_id,
-        true,
-        `Tool ${action.name} not found`,
-      );
-    }
+    actions: ToolCall[],
+  ): Promise<ToolResult[]> {
 
-    try {
-      const result = await tool.execute(context, action.arguments);
-      return new ToolResult(action.call_id, false, result);
-    } catch (error) {
-      return new ToolResult(
-        action.call_id,
-        true,
-        `Error occurred while executing tool ${action.name}: ${error}`,
-      );
-    }
+    return Promise.all(actions.map(async action => {
+      let toolResult:ToolResult; 
+      const tool = this.tools.find((t) => t.name === action.name);
+      if (!tool) {
+        toolResult = new ToolResult(action.call_id, true, `Tool ${action.name} not found`,);
+      }
+      else {
+        try {
+          const result = await tool.execute(context, action.arguments);
+          toolResult = new ToolResult(action.call_id, false, result);
+        } 
+        catch (error) {
+          toolResult = new ToolResult(action.call_id, true, `Error occurred while executing tool ${action.name}: ${error}`,);
+        }
+      }
+      context.addEvent(new Event(context.runId, toolResult.type, toolResult))
+      return toolResult
+    })
+    )
   }
 }

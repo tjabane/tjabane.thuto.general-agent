@@ -46,9 +46,9 @@ export class Event {
     readonly runId: string;
     readonly timestamp: number;
     readonly author: string;
-    readonly content: OutputItem;
+    readonly content: OutputItem|OutputItem[];
 
-    constructor(runId: string, author: string, content: OutputItem) {
+    constructor(runId: string, author: string, content: OutputItem|OutputItem[]) {
         this.Id = randomUUID();
         this.timestamp = Date.now();
         this.runId = runId;
