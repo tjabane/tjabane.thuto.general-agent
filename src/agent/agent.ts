@@ -1,5 +1,5 @@
 import type { LLMClient } from "./clients/llm-client";
-import { ExecutionContext, Event } from "./models/agent-runtime";
+import { ExecutionContext, Event, AgentResult } from "./models/agent-runtime";
 import type { Tool } from "./contracts/tool";
 import { Message, ToolCall, ToolResult } from "./models/agent";
 import { LlmRequest, LLMResponse } from "./models/llm";
@@ -19,7 +19,7 @@ export class Agent {
     this.maxIterations = maxIterations;
   }
 
-  async run(message: string, context: ExecutionContext): Promise<any> {
+  async run(message: string, context: ExecutionContext): Promise<AgentResult> {
     if(!context) {
       context = new ExecutionContext();
     }
@@ -46,7 +46,7 @@ export class Agent {
       else if(response.data instanceof Message) {
         this.messages.push(response.data);
         context.result = response.data.content;
-        return response.data.content;
+        return new AgentResult(response.data.content, context);
       }
       context.incrementIteration();
     }

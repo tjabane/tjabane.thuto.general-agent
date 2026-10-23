@@ -9,6 +9,7 @@
   "scripts": {
     "agent": "bun run --filter @general-agent/agent start",
     "check": "biome check .",
+    "eval:baseline": "bun run evals/baseline/index.ts",
     "format": "biome format --write .",
     "lint": "biome lint ."
   },

@@ -56,3 +56,14 @@ export class Event {
         this.content = content;
     }
 }
+
+export class AgentResult{
+    readonly response: string;
+    readonly context: ExecutionContext;
+
+    constructor(response: string, context: ExecutionContext)
+    {
+        this.response = response;
+        this.context = context;
+    }
+}

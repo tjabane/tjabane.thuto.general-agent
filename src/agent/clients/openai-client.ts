@@ -9,7 +9,7 @@ export class OpenAIClient implements LLMClient {
   private readonly model: string;
   private readonly temperature: number;
 
-  constructor(model: string = "gpt-4o", temperature: number = 1) {
+  constructor(model: string, temperature: number = 1) {
     this.client = new OpenAI();
     this.model = model;
     this.temperature = temperature;
