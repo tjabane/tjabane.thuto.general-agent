@@ -29,6 +29,7 @@ type OllamaChatResponse = {
 
 /** An LLM client for a local Ollama server and Ollama Cloud models. */
 export class OllamaClient implements LLMClient {
+  private readonly apiKey?: string;
   private readonly baseUrl: string;
   private readonly model: string;
   private readonly temperature: number;
@@ -42,11 +43,15 @@ export class OllamaClient implements LLMClient {
   constructor(
     model = "glm-5.3-flash:cloud",
     temperature = 1,
-    baseUrl = process.env.OLLAMA_HOST ?? "http://127.0.0.1:11434",
+    baseUrl = process.env.OLLAMA_BASE_URL ??
+      process.env.OLLAMA_HOST ??
+      "http://127.0.0.1:11434",
+    apiKey = process.env.OLLAMA_API_KEY,
   ) {
     this.model = model;
     this.temperature = temperature;
     this.baseUrl = OllamaClient.toHttpUrl(baseUrl);
+    this.apiKey = apiKey;
   }
 
   async generate(request: LlmRequest): Promise<LLMResponse> {
@@ -54,7 +59,10 @@ export class OllamaClient implements LLMClient {
       const messages = this.buildMessages(request);
       const response = await fetch(`${this.baseUrl}/api/chat`, {
         method: "POST",
-        headers: { "content-type": "application/json" },
+        headers: {
+          "content-type": "application/json",
+          ...(this.apiKey ? { Authorization: `Bearer ${this.apiKey}` } : {}),
+        },
         body: JSON.stringify({
           model: this.model,
           stream: false,

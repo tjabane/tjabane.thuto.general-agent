@@ -1,10 +1,6 @@
 import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
 import { OllamaClient } from "../../../src/agent/clients/ollama-client";
-import {
-  Message,
-  ToolCall,
-  ToolResult,
-} from "../../../src/agent/models/agent";
+import { Message, ToolCall, ToolResult } from "../../../src/agent/models/agent";
 import { LlmRequest } from "../../../src/agent/models/llm";
 import { CalculatorTool } from "../../../src/tools";
 
@@ -13,12 +9,16 @@ const tools = [new CalculatorTool()];
 
 let fetchSpy: ReturnType<typeof spyOn<typeof globalThis, "fetch">>;
 // biome-ignore lint/suspicious/noExplicitAny: request bodies are asserted against plain JSON
-let requests: { url: string; body: any }[];
+let requests: { url: string; body: any; headers: Headers }[];
 
 /** Queues the bodies Ollama returns, in order, one per fetch call. */
 function mockOllama(...responses: Response[]) {
   fetchSpy.mockImplementation((async (url: string, init?: RequestInit) => {
-    requests.push({ url, body: JSON.parse(init?.body as string) });
+    requests.push({
+      url,
+      body: JSON.parse(init?.body as string),
+      headers: new Headers(init?.headers),
+    });
     const response = responses.shift();
     if (!response) {
       throw new Error("Unexpected fetch call.");
@@ -56,6 +56,21 @@ afterEach(() => {
 });
 
 describe("OllamaClient", () => {
+  test("sends bearer authentication to Ollama Cloud", async () => {
+    mockOllama(textResponse("Hello!"));
+    const client = new OllamaClient(
+      "glm-5.3",
+      1,
+      "https://ollama.com",
+      "cloud-key",
+    );
+
+    await client.generate(new LlmRequest(instruction, tools, []));
+
+    expect(requests[0]?.url).toBe("https://ollama.com/api/chat");
+    expect(requests[0]?.headers.get("authorization")).toBe("Bearer cloud-key");
+  });
+
   test("sends the instruction, messages, and tools to /api/chat", async () => {
     mockOllama(textResponse("Hello!"));
     const client = new OllamaClient("test-model", 0.2, "localhost:11434/");

@@ -12,9 +12,9 @@ import type { GaiaLevel } from "./gaia-dataset";
 
 const RUNS_DIR = ".data/gaia/runs";
 
-function createGaiaAgent(): Agent {
+function createGaiaAgent(provider?: string): Agent {
   const client = createClient(
-    process.env.GAIA_PROVIDER ?? process.env.LLM_PROVIDER,
+    provider ?? process.env.GAIA_PROVIDER ?? process.env.LLM_PROVIDER,
   );
   return new Agent(
     client,
@@ -52,16 +52,20 @@ if (import.meta.main) {
       split: { type: "string", default: "validation" },
       concurrency: { type: "string", default: "3" },
       attachments: { type: "boolean", default: false },
+      provider: { type: "string" },
     },
   });
 
-  const report = await runGaiaEvaluation(createGaiaAgent, {
-    level: Number(values.level) as GaiaLevel,
-    count: Number(values.count),
-    split: values.split,
-    concurrency: Number(values.concurrency),
-    includeAttachments: values.attachments,
-  });
+  const report = await runGaiaEvaluation(
+    () => createGaiaAgent(values.provider),
+    {
+      level: Number(values.level) as GaiaLevel,
+      count: Number(values.count),
+      split: values.split,
+      concurrency: Number(values.concurrency),
+      includeAttachments: values.attachments,
+    },
+  );
 
   console.table([summarize(report)]);
 
