@@ -1,6 +1,9 @@
 import type { Agent } from "../../src/agent/agent";
+import { ToolCall } from "../../src/agent/models/agent";
+import { ExecutionContext } from "../../src/agent/models/agent-runtime";
 import { type GaiaLevel, getGaiaProblems } from "./gaia-dataset";
-import type { GaiaOutput, GaiaProblem } from "./models";
+import type { GaiaEvaluation, GaiaProblem } from "./models";
+import { extractFinalAnswer, isCorrectGaiaAnswer } from "./scoring";
 
 export type AgentFactory = () => Agent;
 
@@ -14,63 +17,89 @@ If you are asked for a string, don't use articles, neither abbreviations (e.g. f
 
 If you are asked for a comma separated list, apply the above rules depending of whether the element to be put in the list is a number or a string.`;
 
-export type GaiaEvaluation = {
-  metadata: GaiaProblem;
-  output: GaiaOutput;
+export type GaiaRunOptions = {
+  level: GaiaLevel;
+  count: number;
+  split: string;
+  // How many problems run at the same time.
+  concurrency: number;
+  // Problems with attached files are skipped until the agent has a file tool.
+  includeAttachments: boolean;
 };
 
 export type GaiaEvaluationReport = {
-  dataset: {
-    split: string;
-    level: GaiaLevel;
-  };
-  requestedProblemCount: number;
-  evaluatedProblemCount: number;
+  options: GaiaRunOptions;
+  skippedWithAttachments: number;
   evaluations: GaiaEvaluation[];
 };
 
-async function solveProblem(
-  agent: Agent,
+function toolCallNames(context: ExecutionContext): string[] {
+  return context.events
+    .map((event) => event.content)
+    .filter((content) => content instanceof ToolCall)
+    .map((toolCall) => toolCall.name);
+}
+
+/** Runs one problem with a fresh agent and scores its answer. */
+async function evaluateProblem(
+  createAgent: AgentFactory,
   problem: GaiaProblem,
-): Promise<GaiaOutput> {
+): Promise<GaiaEvaluation> {
+  const context = new ExecutionContext();
+  const start = Date.now();
+  const evaluation = (answer: string, error?: string): GaiaEvaluation => ({
+    problem,
+    answer,
+    correct: isCorrectGaiaAnswer(answer, String(problem["Final answer"])),
+    iterations: context.iteration,
+    toolCalls: toolCallNames(context),
+    durationMs: Date.now() - start,
+    error,
+  });
+
   try {
-    return await agent.run(problem.Question);
+    const result = await createAgent().run(problem.Question, context);
+    return evaluation(extractFinalAnswer(result.response));
   } catch (error) {
-    return {
-      is_solvable: false,
-      unsolvable_reason:
-        error instanceof Error ? error.message : "Unknown evaluation error.",
-      final_answer: "",
-    };
+    return evaluation(
+      "",
+      error instanceof Error ? error.message : String(error),
+    );
   }
 }
 
-/** Evaluates the requested GAIA problems without sharing conversation history between them. */
+/** Evaluates GAIA problems, each with its own agent so no history is shared between them. */
 export async function runGaiaEvaluation(
   createAgent: AgentFactory,
-  level: GaiaLevel = 1,
-  count: number = 1,
+  options: GaiaRunOptions,
 ): Promise<GaiaEvaluationReport> {
-  const split = process.argv[2] ?? "validation";
-  const problems = await getGaiaProblems(level, count, {
-    split,
-  });
+  const all = await getGaiaProblems(options.level, { split: options.split });
+  const eligible = options.includeAttachments
+    ? all
+    : all.filter((problem) => !problem.file_name);
+  const problems = eligible.slice(0, options.count);
 
   if (problems.length === 0) {
-    throw new Error("No GAIA problems matched the requested level and count.");
+    throw new Error("No GAIA problems matched the requested options.");
   }
 
-  const evaluations = await Promise.all(
-    problems.map(async (problem) => ({
-      metadata: problem,
-      output: await solveProblem(createAgent(), problem),
-    })),
-  );
+  const evaluations: GaiaEvaluation[] = [];
+  let next = 0;
+  const worker = async () => {
+    while (next < problems.length) {
+      const problem = problems[next++] as GaiaProblem;
+      const evaluation = await evaluateProblem(createAgent, problem);
+      evaluations.push(evaluation);
+      console.log(
+        `${evaluation.correct ? "✓" : "✗"} ${problem.task_id.slice(0, 8)} answer=${JSON.stringify(evaluation.answer)} expected=${JSON.stringify(problem["Final answer"])}${evaluation.error ? ` error=${evaluation.error}` : ""}`,
+      );
+    }
+  };
+  await Promise.all(Array.from({ length: options.concurrency }, worker));
 
   return {
-    dataset: { split, level },
-    requestedProblemCount: count,
-    evaluatedProblemCount: evaluations.length,
+    options,
+    skippedWithAttachments: all.length - eligible.length,
     evaluations,
   };
 }
