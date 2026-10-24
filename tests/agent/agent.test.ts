@@ -1,9 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import { Agent } from "../../src/agent/agent";
-import type { Tool } from "../../src/agent/contracts/tool";
 import { Message, ToolCall, ToolResult } from "../../src/agent/models/agent";
 import { LLMResponse } from "../../src/agent/models/llm";
 import { ScriptedLLMClient } from "./support/scripted-llm-client";
+import { TestTool } from "./support/test-tool";
 
 function deferred() {
   let resolve!: () => void;
@@ -13,7 +13,7 @@ function deferred() {
   return { promise, resolve };
 }
 
-describe("Agent.run", () => {
+describe("Agent direct task completion", () => {
   test("when a task can be answered directly, returns the answer", async () => {
     const client = new ScriptedLLMClient([
       new LLMResponse(new Message("assistant", "Hello!"), {}),
@@ -47,23 +47,14 @@ describe("Agent.run", () => {
       content: new Message("assistant", "Hello!"),
     });
   });
+});
 
+describe("Agent single-tool task completion", () => {
   test("when a task requires a tool, uses the tool result to complete the task", async () => {
-    const toolExecutions: { runId: string; arguments: unknown }[] = [];
-    const tool: Tool<{ text: string }, string> = {
-      name: "echo",
-      description: "Returns the supplied text.",
-      parameters: {
-        type: "object",
-        properties: { text: { type: "string" } },
-        required: ["text"],
-        additionalProperties: false,
-      },
-      execute: async (context, arguments_) => {
-        toolExecutions.push({ runId: context.runId, arguments: arguments_ });
-        return arguments_.text;
-      },
-    };
+    const tool = new TestTool<{ text: string }, string>(
+      "echo",
+      (_context, { text }) => text,
+    );
     const requestedToolCall = new ToolCall("echo", "call-1", {
       text: "Hello from the tool!",
     });
@@ -77,7 +68,12 @@ describe("Agent.run", () => {
 
     expect(result.response).toBe("Tool complete.");
     expect(result.context.iteration).toBe(2);
-    expect(toolExecutions).toEqual([
+    expect(
+      tool.executions.map(({ context, input }) => ({
+        runId: context.runId,
+        arguments: input,
+      })),
+    ).toEqual([
       {
         runId: result.context.runId,
         arguments: { text: "Hello from the tool!" },
@@ -144,21 +140,9 @@ describe("Agent.run", () => {
   });
 
   test("when a requested tool fails, lets the model respond to the failure", async () => {
-    let executionCount = 0;
-    const tool: Tool<{ text: string }, string> = {
-      name: "echo",
-      description: "Returns the supplied text.",
-      parameters: {
-        type: "object",
-        properties: { text: { type: "string" } },
-        required: ["text"],
-        additionalProperties: false,
-      },
-      execute: async () => {
-        executionCount++;
-        throw new Error("Echo service unavailable");
-      },
-    };
+    const tool = new TestTool<{ text: string }, string>("echo", async () => {
+      throw new Error("Echo service unavailable");
+    });
     const requestedToolCall = new ToolCall("echo", "call-1", {
       text: "Hello from the tool!",
     });
@@ -172,7 +156,7 @@ describe("Agent.run", () => {
 
     expect(result.response).toBe("The echo tool failed.");
     expect(result.context.iteration).toBe(2);
-    expect(executionCount).toBe(1);
+    expect(tool.executions).toHaveLength(1);
     expect(client.requests).toHaveLength(2);
     expect(client.requests[1]?.previousResponseId).toBe("response-1");
     expect(client.requests[1]?.toolResults[0]).toMatchObject({
@@ -191,37 +175,18 @@ describe("Agent.run", () => {
       failed: true,
     });
   });
+});
 
+describe("Agent multiple-tool task completion", () => {
   test("when a task requires multiple tools, uses all tool results to complete the task", async () => {
-    const executions: string[] = [];
-    const uppercaseTool: Tool<{ text: string }, string> = {
-      name: "uppercase",
-      description: "Converts text to uppercase.",
-      parameters: {
-        type: "object",
-        properties: { text: { type: "string" } },
-        required: ["text"],
-        additionalProperties: false,
-      },
-      execute: async (_context, { text }) => {
-        executions.push("uppercase");
-        return text.toUpperCase();
-      },
-    };
-    const lengthTool: Tool<{ text: string }, number> = {
-      name: "length",
-      description: "Returns the length of text.",
-      parameters: {
-        type: "object",
-        properties: { text: { type: "string" } },
-        required: ["text"],
-        additionalProperties: false,
-      },
-      execute: async (_context, { text }) => {
-        executions.push("length");
-        return text.length;
-      },
-    };
+    const uppercaseTool = new TestTool<{ text: string }, string>(
+      "uppercase",
+      (_context, { text }) => text.toUpperCase(),
+    );
+    const lengthTool = new TestTool<{ text: string }, number>(
+      "length",
+      (_context, { text }) => text.length,
+    );
     const uppercaseCall = new ToolCall("uppercase", "call-1", {
       text: "hello",
     });
@@ -244,7 +209,8 @@ describe("Agent.run", () => {
 
     expect(result.response).toBe("HELLO contains 5 characters.");
     expect(result.context.iteration).toBe(2);
-    expect(executions.toSorted()).toEqual(["length", "uppercase"]);
+    expect(uppercaseTool.executions).toHaveLength(1);
+    expect(lengthTool.executions).toHaveLength(1);
     expect(client.requests).toHaveLength(2);
     expect(client.requests[1]?.previousResponseId).toBe("response-1");
     expect(client.requests[1]?.toolResults).toEqual([
@@ -266,35 +232,17 @@ describe("Agent.run", () => {
     const releaseFirst = deferred();
     const releaseSecond = deferred();
     const started: string[] = [];
-    const firstTool: Tool<Record<string, never>, string> = {
-      name: "first",
-      description: "Runs the first independent operation.",
-      parameters: {
-        type: "object",
-        properties: {},
-        additionalProperties: false,
-      },
-      execute: async () => {
-        started.push("first");
-        firstStarted.resolve();
-        await releaseFirst.promise;
-        return "first result";
-      },
-    };
-    const secondTool: Tool<Record<string, never>, string> = {
-      name: "second",
-      description: "Runs the second independent operation.",
-      parameters: {
-        type: "object",
-        properties: {},
-        additionalProperties: false,
-      },
-      execute: async () => {
-        started.push("second");
-        await releaseSecond.promise;
-        return "second result";
-      },
-    };
+    const firstTool = new TestTool("first", async () => {
+      started.push("first");
+      firstStarted.resolve();
+      await releaseFirst.promise;
+      return "first result";
+    });
+    const secondTool = new TestTool("second", async () => {
+      started.push("second");
+      await releaseSecond.promise;
+      return "second result";
+    });
     const client = new ScriptedLLMClient([
       new LLMResponse(
         [
@@ -327,28 +275,10 @@ describe("Agent.run", () => {
   });
 
   test("when one of multiple requested tools fails, returns both successful and failed results", async () => {
-    const successfulTool: Tool<Record<string, never>, string> = {
-      name: "successful",
-      description: "Completes successfully.",
-      parameters: {
-        type: "object",
-        properties: {},
-        additionalProperties: false,
-      },
-      execute: async () => "completed",
-    };
-    const failingTool: Tool<Record<string, never>, string> = {
-      name: "failing",
-      description: "Fails during execution.",
-      parameters: {
-        type: "object",
-        properties: {},
-        additionalProperties: false,
-      },
-      execute: async () => {
-        throw new Error("Tool operation failed");
-      },
-    };
+    const successfulTool = new TestTool("successful", () => "completed");
+    const failingTool = new TestTool("failing", async () => {
+      throw new Error("Tool operation failed");
+    });
     const client = new ScriptedLLMClient([
       new LLMResponse(
         [
@@ -381,23 +311,14 @@ describe("Agent.run", () => {
       "Tool operation failed",
     );
   });
+});
 
+describe("Agent sequential tool rounds", () => {
   test("when a task requires sequential tool rounds, uses each result before continuing", async () => {
-    const executions: string[] = [];
-    const tool: Tool<{ step: string }, string> = {
-      name: "step",
-      description: "Completes one step.",
-      parameters: {
-        type: "object",
-        properties: { step: { type: "string" } },
-        required: ["step"],
-        additionalProperties: false,
-      },
-      execute: async (_context, { step }) => {
-        executions.push(step);
-        return `${step} complete`;
-      },
-    };
+    const tool = new TestTool<{ step: string }, string>(
+      "step",
+      (_context, { step }) => `${step} complete`,
+    );
     const client = new ScriptedLLMClient([
       new LLMResponse([new ToolCall("step", "call-1", { step: "first" })], {
         response_id: "response-1",
@@ -412,7 +333,10 @@ describe("Agent.run", () => {
     const result = await agent.run("Complete both steps in order");
 
     expect(result.response).toBe("Both steps complete.");
-    expect(executions).toEqual(["first", "second"]);
+    expect(tool.executions.map(({ input }) => input.step)).toEqual([
+      "first",
+      "second",
+    ]);
     expect(client.requests).toHaveLength(3);
     expect(client.requests[1]?.previousResponseId).toBe("response-1");
     expect(client.requests[1]?.toolResults).toEqual([
@@ -423,23 +347,14 @@ describe("Agent.run", () => {
       new ToolResult("call-2", false, "second complete"),
     ]);
   });
+});
 
+describe("Agent tool-result integrity", () => {
   test("when the same tool is requested more than once, preserves each call and result", async () => {
-    const inputs: number[] = [];
-    const tool: Tool<{ value: number }, number> = {
-      name: "double",
-      description: "Doubles a number.",
-      parameters: {
-        type: "object",
-        properties: { value: { type: "number" } },
-        required: ["value"],
-        additionalProperties: false,
-      },
-      execute: async (_context, { value }) => {
-        inputs.push(value);
-        return value * 2;
-      },
-    };
+    const tool = new TestTool<{ value: number }, number>(
+      "double",
+      (_context, { value }) => value * 2,
+    );
     const client = new ScriptedLLMClient([
       new LLMResponse(
         [
@@ -458,7 +373,7 @@ describe("Agent.run", () => {
     const result = await agent.run("Double 2 and 5");
 
     expect(result.response).toBe("The results are 4 and 10.");
-    expect(inputs).toEqual([2, 5]);
+    expect(tool.executions.map(({ input }) => input.value)).toEqual([2, 5]);
     expect(client.requests[1]?.toolResults).toEqual([
       new ToolResult("call-1", false, 4),
       new ToolResult("call-2", false, 10),
@@ -466,17 +381,10 @@ describe("Agent.run", () => {
   });
 
   test("when tools return falsy values, preserves them as successful results", async () => {
-    const tool: Tool<{ value: unknown }, unknown> = {
-      name: "identity",
-      description: "Returns a value unchanged.",
-      parameters: {
-        type: "object",
-        properties: { value: {} },
-        required: ["value"],
-        additionalProperties: false,
-      },
-      execute: async (_context, { value }) => value,
-    };
+    const tool = new TestTool<{ value: unknown }, unknown>(
+      "identity",
+      (_context, { value }) => value,
+    );
     const client = new ScriptedLLMClient([
       new LLMResponse(
         [
@@ -505,16 +413,7 @@ describe("Agent.run", () => {
       items: ["alpha", "beta"],
       metadata: { count: 2 },
     };
-    const tool: Tool<Record<string, never>, typeof structuredResult> = {
-      name: "structured",
-      description: "Returns structured data.",
-      parameters: {
-        type: "object",
-        properties: {},
-        additionalProperties: false,
-      },
-      execute: async () => structuredResult,
-    };
+    const tool = new TestTool("structured", () => structuredResult);
     const client = new ScriptedLLMClient([
       new LLMResponse([new ToolCall("structured", "call-1", {})], {
         response_id: "response-1",
@@ -535,33 +434,15 @@ describe("Agent.run", () => {
     const firstStarted = deferred();
     const secondFinished = deferred();
     const releaseFirst = deferred();
-    const firstTool: Tool<Record<string, never>, string> = {
-      name: "first",
-      description: "Finishes after the second tool.",
-      parameters: {
-        type: "object",
-        properties: {},
-        additionalProperties: false,
-      },
-      execute: async () => {
-        firstStarted.resolve();
-        await releaseFirst.promise;
-        return "first result";
-      },
-    };
-    const secondTool: Tool<Record<string, never>, string> = {
-      name: "second",
-      description: "Finishes before the first tool.",
-      parameters: {
-        type: "object",
-        properties: {},
-        additionalProperties: false,
-      },
-      execute: async () => {
-        secondFinished.resolve();
-        return "second result";
-      },
-    };
+    const firstTool = new TestTool("first", async () => {
+      firstStarted.resolve();
+      await releaseFirst.promise;
+      return "first result";
+    });
+    const secondTool = new TestTool("second", () => {
+      secondFinished.resolve();
+      return "second result";
+    });
     const client = new ScriptedLLMClient([
       new LLMResponse(
         [
@@ -593,7 +474,9 @@ describe("Agent.run", () => {
       new ToolResult("call-2", false, "second result"),
     ]);
   });
+});
 
+describe("Agent model-response handling", () => {
   test("when the model returns an error, rejects the failed response", async () => {
     const client = new ScriptedLLMClient([
       new LLMResponse(new Message("assistant", ""), {}, "Model request failed"),
@@ -606,21 +489,10 @@ describe("Agent.run", () => {
   });
 
   test("when the model returns a single tool call, uses its result to complete the task", async () => {
-    let executionCount = 0;
-    const tool: Tool<{ value: string }, string> = {
-      name: "echo",
-      description: "Returns the supplied value.",
-      parameters: {
-        type: "object",
-        properties: { value: { type: "string" } },
-        required: ["value"],
-        additionalProperties: false,
-      },
-      execute: async (_context, { value }) => {
-        executionCount++;
-        return value;
-      },
-    };
+    const tool = new TestTool<{ value: string }, string>(
+      "echo",
+      (_context, { value }) => value,
+    );
     const client = new ScriptedLLMClient([
       new LLMResponse(new ToolCall("echo", "call-1", { value: "complete" }), {
         response_id: "response-1",
@@ -632,7 +504,7 @@ describe("Agent.run", () => {
     const result = await agent.run("Complete the task");
 
     expect(result.response).toBe("Task complete.");
-    expect(executionCount).toBe(1);
+    expect(tool.executions).toHaveLength(1);
     expect(client.requests[1]?.toolResults).toEqual([
       new ToolResult("call-1", false, "complete"),
     ]);
@@ -662,20 +534,7 @@ describe("Agent.run", () => {
   });
 
   test("when the model returns a mixed tool-call batch, rejects it without executing tools", async () => {
-    let executionCount = 0;
-    const tool: Tool<Record<string, never>, string> = {
-      name: "echo",
-      description: "Returns a value.",
-      parameters: {
-        type: "object",
-        properties: {},
-        additionalProperties: false,
-      },
-      execute: async () => {
-        executionCount++;
-        return "complete";
-      },
-    };
+    const tool = new TestTool("echo", () => "complete");
     const client = new ScriptedLLMClient([
       new LLMResponse(
         [
@@ -690,7 +549,7 @@ describe("Agent.run", () => {
     await expect(agent.run("Complete the task")).rejects.toThrow(
       "Model returned an invalid tool-call batch.",
     );
-    expect(executionCount).toBe(0);
+    expect(tool.executions).toHaveLength(0);
   });
 
   test("when the model returns an empty tool request, rejects the invalid response", async () => {
@@ -703,18 +562,11 @@ describe("Agent.run", () => {
       "Model returned an empty tool request.",
     );
   });
+});
 
+describe("Agent iteration limits", () => {
   test("when tool calls exceed the iteration limit, stops the task", async () => {
-    const tool: Tool<Record<string, never>, string> = {
-      name: "repeat",
-      description: "Completes one repeated operation.",
-      parameters: {
-        type: "object",
-        properties: {},
-        additionalProperties: false,
-      },
-      execute: async () => "continue",
-    };
+    const tool = new TestTool("repeat", () => "continue");
     const client = new ScriptedLLMClient([
       new LLMResponse([new ToolCall("repeat", "call-1", {})], {
         response_id: "response-1",

@@ -1,10 +1,6 @@
 import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
 import { OpenAIClient } from "../../../src/agent/clients/openai-client";
-import {
-  Message,
-  ToolCall,
-  ToolResult,
-} from "../../../src/agent/models/agent";
+import { Message, ToolCall, ToolResult } from "../../../src/agent/models/agent";
 import { LlmRequest } from "../../../src/agent/models/llm";
 import { CalculatorTool } from "../../../src/tools";
 
@@ -78,7 +74,7 @@ afterEach(() => {
 describe("OpenAIClient", () => {
   test("sends messages, instructions, and strict tools to the Responses API", async () => {
     mockResponses(apiResponse([textOutput("Hello!")]));
-    const client = new OpenAIClient("test-model", 0.2);
+    const client = new OpenAIClient("test-model");
     await client.generate(
       new LlmRequest(instruction, tools, [new Message("user", "Hi")]),
     );
@@ -97,7 +93,6 @@ describe("OpenAIClient", () => {
       })),
       parallel_tool_calls: true,
       input: [{ type: "message", role: "user", content: "Hi" }],
-      temperature: 0.2,
     });
   });
 
