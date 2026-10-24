@@ -1,8 +1,12 @@
 import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
-import { OllamaClient } from "../../src/agent/clients/ollama-client";
-import { Message, ToolCall, ToolResult } from "../../src/agent/models/agent";
-import { LlmRequest } from "../../src/agent/models/llm";
-import { CalculatorTool } from "../../src/tools";
+import { OllamaClient } from "../../../src/agent/clients/ollama-client";
+import {
+  Message,
+  ToolCall,
+  ToolResult,
+} from "../../../src/agent/models/agent";
+import { LlmRequest } from "../../../src/agent/models/llm";
+import { CalculatorTool } from "../../../src/tools";
 
 const instruction = "You are a helpful assistant.";
 const tools = [new CalculatorTool()];

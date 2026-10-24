@@ -40,63 +40,90 @@ export class Agent {
     );
 
     for (let iteration = 0; iteration < this.maxIterations; iteration++) {
+      context.incrementIteration();
       const response: LLMResponse = await this.client.generate(request);
-      context.addEvent(new Event(context.runId, "assistant", response.data));
       if (response.error) {
+        console.error(response.error);
         throw new Error(response.error);
       }
+      const modelOutput = response.data;
+      context.addEvent(new Event(context.runId, "assistant", modelOutput));
 
-      if ( Array.isArray(response.data)) {
-        const toolRequests = response.data.filter((item) => item instanceof ToolCall)
-        const toolResults = await this.act(context, toolRequests);
-        request = new LlmRequest(
-          this.instruction,
-          this.tools,
-          this.messages,
-          toolResults,
-          response.metadata.response_id,
-        );
-      } 
-      else if (response.data instanceof Message) {
-        this.messages.push(response.data);
-        context.result = response.data.content;
-        return new AgentResult(response.data.content, context);
+      if (modelOutput instanceof Message) {
+        this.messages.push(modelOutput);
+        context.result = modelOutput.content;
+        return new AgentResult(modelOutput.content, context);
       }
-      context.incrementIteration();
-    }
 
+      const toolCalls =
+        modelOutput instanceof ToolCall ? [modelOutput] : modelOutput;
+
+      if (!Array.isArray(toolCalls)) {
+        throw new Error("Model returned an unsupported response.");
+      }
+
+      if (toolCalls.length === 0) {
+        throw new Error("Model returned an empty tool request.");
+      }
+
+      if (
+        !toolCalls.every((item): item is ToolCall => item instanceof ToolCall)
+      ) {
+        throw new Error("Model returned an invalid tool-call batch.");
+      }
+
+      const results = await this.executeTools(toolCalls, context);
+
+      request = new LlmRequest(
+        this.instruction,
+        this.tools,
+        this.messages,
+        results,
+        response.metadata.response_id,
+      );
+    }
     throw new Error(
       `Agent stopped after ${this.maxIterations} iterations without a final answer.`,
     );
   }
 
   /**
-   * Is takes a tool call, finds the right tool from the list and executes it. If the tool fails or it doesnt exist it returns that
-   * error in the result
+   * Executes a tool call and returns the result.
+   * @param toolCall The details of which tool to execute
+   * @param context The execution context
    */
-  private async act(
+  private async executeTools(
+    toolCalls: ToolCall[],
     context: ExecutionContext,
-    actions: ToolCall[],
   ): Promise<ToolResult[]> {
-
-    return Promise.all(actions.map(async action => {
-      let toolResult:ToolResult; 
-      const tool = this.tools.find((t) => t.name === action.name);
-      if (!tool) {
-        toolResult = new ToolResult(action.call_id, true, `Tool ${action.name} not found`,);
-      }
-      else {
-        try {
-          const result = await tool.execute(context, action.arguments);
-          toolResult = new ToolResult(action.call_id, false, result);
-        } 
-        catch (error) {
-          toolResult = new ToolResult(action.call_id, true, `Error occurred while executing tool ${action.name}: ${error}`,);
+    const allResults = await Promise.all(
+      toolCalls.map(async (toolCall) => {
+        const tool = this.tools.find((t) => t.name === toolCall.name);
+        if (!tool) {
+          return new ToolResult(
+            toolCall.call_id,
+            true,
+            `Tool ${toolCall.name} not found.`,
+          );
+        } else {
+          try {
+            const output = await tool.execute(context, toolCall.arguments);
+            return new ToolResult(toolCall.call_id, false, output);
+          } catch (error) {
+            console.error(`Error executing tool ${toolCall.name}:`, error);
+            return new ToolResult(
+              toolCall.call_id,
+              true,
+              `Tool ${toolCall.name} execution failed: ${error}`,
+            );
+          }
         }
-      }
-      context.addEvent(new Event(context.runId, toolResult.type, toolResult))
-      return toolResult
-    })
-    )
+      }),
+    );
+
+    for (const result of allResults) {
+      context.addEvent(new Event(context.runId, result.type, result));
+    }
+    return allResults;
   }
 }

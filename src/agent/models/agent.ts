@@ -37,4 +37,6 @@ export class ToolResult {
   }
 }
 
-export type OutputItem = Message | ToolCall | ToolResult;
+type ToolCallBatch = [ToolCall, ...ToolCall[]];
+
+export type ModelOutput = Message | ToolCallBatch;

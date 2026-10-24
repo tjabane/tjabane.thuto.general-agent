@@ -7,12 +7,10 @@ import { LlmRequest, LLMResponse } from "../models/llm";
 export class OpenAIClient implements LLMClient {
   private readonly client: OpenAI;
   private readonly model: string;
-  private readonly temperature: number;
 
-  constructor(model: string, temperature: number = 1) {
+  constructor(model: string) {
     this.client = new OpenAI();
     this.model = model;
-    this.temperature = temperature;
   }
 
   async generate(request: LlmRequest): Promise<LLMResponse> {
@@ -36,7 +34,6 @@ export class OpenAIClient implements LLMClient {
               })),
             ]
           : messages,
-        temperature: this.temperature,
       });
 
       const metadata = {
