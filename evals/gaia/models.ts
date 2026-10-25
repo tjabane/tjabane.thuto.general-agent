@@ -14,5 +14,12 @@ export type GaiaEvaluation = {
   iterations: number;
   toolCalls: string[];
   durationMs: number;
+  trace: Array<{
+    id: string;
+    runId: string;
+    timestamp: number;
+    author: string;
+    content: unknown;
+  }>;
   error?: string;
 };

@@ -34,7 +34,7 @@ function createGaiaAgent(provider?: string): Agent {
       new ReadMediaTool(),
       new UnzipTool(),
     ],
-    20,
+    30,
   );
 }
 

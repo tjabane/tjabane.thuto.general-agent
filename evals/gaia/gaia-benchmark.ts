@@ -111,6 +111,13 @@ async function evaluateProblem(
     iterations: context.iteration,
     toolCalls: toolCallNames(context),
     durationMs: Date.now() - start,
+    trace: context.events.map((event) => ({
+      id: event.Id,
+      runId: event.runId,
+      timestamp: event.timestamp,
+      author: event.author,
+      content: JSON.parse(JSON.stringify(event.content)),
+    })),
     error,
   });
 
