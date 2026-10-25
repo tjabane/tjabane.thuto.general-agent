@@ -54,8 +54,7 @@ export class OpenAIMediaAnalyzer implements MediaAnalyzer {
 
   constructor(options: OpenAIMediaAnalyzerOptions = {}) {
     this.apiKey = options.apiKey ?? process.env.OPENAI_API_KEY;
-    this.model =
-      options.model ?? process.env.OPENAI_MEDIA_MODEL ?? "gpt-4.1-mini";
+    this.model = options.model ?? process.env.OPENAI_MEDIA_MODEL ?? "gpt-4o";
     this.transcriptionModel =
       options.transcriptionModel ??
       process.env.OPENAI_TRANSCRIPTION_MODEL ??
