@@ -1,7 +1,7 @@
 import path from "node:path";
 import { type ExecutionContext, Tool } from "@general-agent/agent";
-import { getFileAccessPolicy, resolveAllowedPath } from "./file-types";
-import { defaultFileServices, type FileServices } from "./services";
+import { getFileAccessPolicy, resolveAllowedPath } from "./support/file-types";
+import { defaultFileServices, type FileServices } from "./support/services";
 
 export type UnzipInput = {
   archivePath: string;
@@ -28,7 +28,7 @@ export class UnzipTool extends Tool<UnzipInput, UnzipOutput> {
       destinationPath: { type: "string", description: "Extraction directory." },
       overwrite: { type: "boolean", description: "Overwrite existing files." },
     },
-    required: ["archivePath"],
+    required: ["archivePath", "destinationPath", "overwrite"],
     additionalProperties: false,
   };
 
@@ -49,7 +49,7 @@ export class UnzipTool extends Tool<UnzipInput, UnzipOutput> {
     }
 
     const destinationPath = await resolveAllowedPath(
-      input.destinationPath ?? `${archivePath}.extracted`,
+      input.destinationPath?.trim() || `${archivePath}.extracted`,
       policy,
       filesystem,
       { mustExist: false },

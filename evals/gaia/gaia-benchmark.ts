@@ -1,7 +1,14 @@
+import { copyFile, mkdtemp, rm } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 import type { Agent } from "../../src/agent/agent";
 import { ToolCall } from "../../src/agent/models/agent";
 import { ExecutionContext } from "../../src/agent/models/agent-runtime";
-import { type GaiaLevel, getGaiaProblems } from "./gaia-dataset";
+import {
+  DEFAULT_DATA_ROOT,
+  type GaiaLevel,
+  getGaiaProblems,
+} from "./gaia-dataset";
 import type { GaiaEvaluation, GaiaProblem } from "./models";
 import { extractFinalAnswer, isCorrectGaiaAnswer } from "./scoring";
 
@@ -25,6 +32,10 @@ export type GaiaRunOptions = {
   concurrency: number;
   // Problems with attached files are skipped until the agent has a file tool.
   includeAttachments: boolean;
+  /** Run only problems that have an attached file. */
+  attachmentsOnly?: boolean;
+  dataRoot?: string;
+  taskId?: string;
 };
 
 export type GaiaEvaluationReport = {
@@ -36,16 +47,62 @@ export type GaiaEvaluationReport = {
 function toolCallNames(context: ExecutionContext): string[] {
   return context.events
     .map((event) => event.content)
-    .filter((content) => content instanceof ToolCall)
+    .flatMap((content) => (Array.isArray(content) ? content : [content]))
+    .filter((content): content is ToolCall => content instanceof ToolCall)
     .map((toolCall) => toolCall.name);
+}
+
+export function hasGaiaAttachment(problem: GaiaProblem): boolean {
+  return Boolean(problem.file_name || problem.file_path);
+}
+
+export function selectGaiaProblems(
+  problems: GaiaProblem[],
+  options: Pick<GaiaRunOptions, "includeAttachments" | "attachmentsOnly">,
+): GaiaProblem[] {
+  if (options.attachmentsOnly) return problems.filter(hasGaiaAttachment);
+  if (options.includeAttachments) return problems;
+  return problems.filter((problem) => !hasGaiaAttachment(problem));
+}
+
+export async function stageGaiaAttachment(
+  problem: GaiaProblem,
+  dataRoot: string,
+  split: string,
+): Promise<{ directory: string; path: string }> {
+  if (!hasGaiaAttachment(problem)) {
+    throw new Error(`GAIA problem ${problem.task_id} has no attachment.`);
+  }
+
+  const source = problem.file_path
+    ? path.resolve(path.dirname(dataRoot), problem.file_path)
+    : path.resolve(dataRoot, split, problem.file_name ?? "");
+  if (!(await Bun.file(source).exists())) {
+    throw new Error(`GAIA attachment not found at ${source}.`);
+  }
+
+  const directory = await mkdtemp(path.join(os.tmpdir(), "gaia-eval-"));
+  const target = path.join(
+    directory,
+    path.basename(problem.file_name ?? source),
+  );
+  await copyFile(source, target);
+  return { directory, path: target };
 }
 
 /** Runs one problem with a fresh agent and scores its answer. */
 async function evaluateProblem(
   createAgent: AgentFactory,
   problem: GaiaProblem,
+  dataRoot: string,
+  split: string,
 ): Promise<GaiaEvaluation> {
-  const context = new ExecutionContext();
+  const staged = hasGaiaAttachment(problem)
+    ? await stageGaiaAttachment(problem, dataRoot, split)
+    : undefined;
+  const context = new ExecutionContext(
+    staged ? { fileAccess: { allowedRoots: [staged.directory] } } : undefined,
+  );
   const start = Date.now();
   const evaluation = (answer: string, error?: string): GaiaEvaluation => ({
     problem,
@@ -58,13 +115,18 @@ async function evaluateProblem(
   });
 
   try {
-    const result = await createAgent().run(problem.Question, context);
+    const question = staged
+      ? `${problem.Question}\n\nThe attached file is available at ${staged.path}. Use the file tools from this temporary workspace to inspect it.`
+      : problem.Question;
+    const result = await createAgent().run(question, context);
     return evaluation(extractFinalAnswer(result.response));
   } catch (error) {
     return evaluation(
       "",
       error instanceof Error ? error.message : String(error),
     );
+  } finally {
+    if (staged) await rm(staged.directory, { recursive: true, force: true });
   }
 }
 
@@ -73,10 +135,14 @@ export async function runGaiaEvaluation(
   createAgent: AgentFactory,
   options: GaiaRunOptions,
 ): Promise<GaiaEvaluationReport> {
-  const all = await getGaiaProblems(options.level, { split: options.split });
-  const eligible = options.includeAttachments
-    ? all
-    : all.filter((problem) => !problem.file_name);
+  const dataRoot = options.dataRoot ?? DEFAULT_DATA_ROOT;
+  const all = await getGaiaProblems(options.level, {
+    split: options.split,
+    dataRoot,
+  });
+  const eligible = selectGaiaProblems(all, options).filter(
+    (problem) => !options.taskId || problem.task_id === options.taskId,
+  );
   const problems = eligible.slice(0, options.count);
 
   if (problems.length === 0) {
@@ -88,7 +154,12 @@ export async function runGaiaEvaluation(
   const worker = async () => {
     while (next < problems.length) {
       const problem = problems[next++] as GaiaProblem;
-      const evaluation = await evaluateProblem(createAgent, problem);
+      const evaluation = await evaluateProblem(
+        createAgent,
+        problem,
+        dataRoot,
+        options.split,
+      );
       evaluations.push(evaluation);
       console.log(
         `${evaluation.correct ? "✓" : "✗"} ${problem.task_id.slice(0, 8)} answer=${JSON.stringify(evaluation.answer)} expected=${JSON.stringify(problem["Final answer"])}${evaluation.error ? ` error=${evaluation.error}` : ""}`,

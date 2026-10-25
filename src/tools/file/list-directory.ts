@@ -1,7 +1,7 @@
 import path from "node:path";
 import { type ExecutionContext, Tool } from "@general-agent/agent";
-import { getFileAccessPolicy, resolveAllowedPath } from "./file-types";
-import { defaultFileServices, type FileServices } from "./services";
+import { getFileAccessPolicy, resolveAllowedPath } from "./support/file-types";
+import { defaultFileServices, type FileServices } from "./support/services";
 
 export type ListDirectoryInput = {
   path: string;
@@ -40,7 +40,7 @@ export class ListDirectoryTool extends Tool<
         description: "Include dotfiles and hidden entries.",
       },
     },
-    required: ["path"],
+    required: ["path", "recursive", "includeHidden"],
     additionalProperties: false,
   };
 

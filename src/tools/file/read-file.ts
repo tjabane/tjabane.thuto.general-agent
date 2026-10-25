@@ -5,8 +5,8 @@ import {
   mediaTypeFor,
   resolveAllowedPath,
   truncateText,
-} from "./file-types";
-import { defaultFileServices, type FileServices } from "./services";
+} from "./support/file-types";
+import { defaultFileServices, type FileServices } from "./support/services";
 
 export type ReadFileInput = {
   path: string;
@@ -76,7 +76,7 @@ export class ReadFileTool extends Tool<ReadFileInput, ReadFileOutput> {
         description: "Excel range, for example A1:D20.",
       },
     },
-    required: ["path"],
+    required: ["path", "sheet", "range"],
     additionalProperties: false,
   };
 

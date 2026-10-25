@@ -5,8 +5,11 @@ import {
   type MediaKind,
   OpenAIMediaAnalyzer,
 } from "@general-agent/services";
-import { getFileAccessPolicy, resolveAllowedPath } from "./file-types";
-import { defaultFileServices, type FileSystemService } from "./services";
+import { getFileAccessPolicy, resolveAllowedPath } from "./support/file-types";
+import {
+  defaultFileServices,
+  type FileSystemService,
+} from "./support/services";
 
 export type ReadMediaInput = {
   path: string;
@@ -76,7 +79,7 @@ export class ReadMediaTool extends Tool<ReadMediaInput, ReadMediaOutput> {
         description: "PDF pages to focus on.",
       },
     },
-    required: ["path"],
+    required: ["path", "prompt", "pages"],
     additionalProperties: false,
   };
 
