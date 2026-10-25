@@ -21,10 +21,23 @@ export interface MediaAnalyzer {
 type OpenAIResponse = {
   model?: string;
   output_text?: string;
+  output?: Array<{
+    content?: Array<{ type?: string; text?: string }>;
+  }>;
   usage?: { input_tokens?: number; output_tokens?: number };
 };
 
 type OpenAITranscription = { text?: string };
+
+function extractOutputText(response: OpenAIResponse): string {
+  if (response.output_text?.trim()) return response.output_text;
+
+  return (response.output ?? [])
+    .flatMap((item) => item.content ?? [])
+    .filter((item) => item.type === "output_text" && item.text)
+    .map((item) => item.text as string)
+    .join("\n");
+}
 
 export type OpenAIMediaAnalyzerOptions = {
   apiKey?: string;
@@ -124,8 +137,10 @@ export class OpenAIMediaAnalyzer implements MediaAnalyzer {
         `OpenAI media analysis failed with ${response.status}: ${await response.text()}`,
       );
     const result = (await response.json()) as OpenAIResponse;
+    const analysis = extractOutputText(result);
+    if (!analysis) throw new Error("OpenAI media analysis returned no text.");
     return {
-      analysis: result.output_text ?? "",
+      analysis,
       model: result.model ?? this.model,
       usage: {
         inputTokens: result.usage?.input_tokens,

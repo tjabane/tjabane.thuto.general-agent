@@ -78,6 +78,24 @@ describe("OpenAIMediaAnalyzer", () => {
     });
   });
 
+  test("extracts analysis text from Responses output items", async () => {
+    const { fetch } = fakeFetch([
+      Response.json({
+        output_text: "",
+        output: [
+          {
+            content: [{ type: "output_text", text: "Recovered analysis." }],
+          },
+        ],
+      }),
+    ]);
+    const analyzer = new OpenAIMediaAnalyzer({ apiKey: "test-key", fetch });
+
+    await expect(analyzer.analyze(baseRequest)).resolves.toMatchObject({
+      analysis: "Recovered analysis.",
+    });
+  });
+
   test("transcribes audio before analyzing the transcript", async () => {
     const { fetch, calls } = fakeFetch([
       Response.json({ text: "The speaker said hello." }),
