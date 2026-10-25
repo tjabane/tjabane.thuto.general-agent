@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { CalculatorTool, evaluateExpression } from "../../src/tools";
+import { CalculatorTool, evaluateExpression } from "../../../src/tools";
 
 describe("evaluateExpression", () => {
   test("evaluates arithmetic and parentheses", () => {

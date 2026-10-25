@@ -4,7 +4,7 @@ import {
   ListDirectoryTool,
   ReadFileTool,
   UnzipTool,
-} from "../../src/tools";
+} from "../../../src/tools";
 
 const root = "C:\\test-workspace";
 const context = { runId: "unit-test", fileAccess: { allowedRoots: [root] } };

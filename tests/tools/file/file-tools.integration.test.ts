@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { ListDirectoryTool, ReadFileTool, UnzipTool } from "../../src/tools";
+import { ListDirectoryTool, ReadFileTool, UnzipTool } from "../../../src/tools";
 
 const context = { runId: "test-run" };
 

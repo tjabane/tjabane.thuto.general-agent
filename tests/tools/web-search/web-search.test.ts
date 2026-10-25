@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { WebSearchTool } from "../../src/tools";
+import { WebSearchTool } from "../../../src/tools";
 
 const context = { runId: "test-run" };
 
