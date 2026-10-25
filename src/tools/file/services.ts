@@ -8,7 +8,6 @@ import {
   writeFile,
 } from "node:fs/promises";
 import { unzipSync } from "fflate";
-import { PDFParse } from "pdf-parse";
 import * as XLSX from "xlsx";
 
 export type FileStat = {
@@ -39,12 +38,6 @@ export interface ArchiveService {
   unzip(data: Uint8Array): Record<string, Uint8Array>;
 }
 
-export type PdfPage = { text: string };
-
-export interface PdfParserService {
-  extractText(data: Uint8Array): Promise<PdfPage[]>;
-}
-
 export type ExcelSheet = { name: string; rows: unknown[][] };
 
 export interface ExcelParserService {
@@ -57,7 +50,6 @@ export interface ExcelParserService {
 export type FileServices = {
   filesystem: FileSystemService;
   archive: ArchiveService;
-  pdf: PdfParserService;
   excel: ExcelParserService;
 };
 
@@ -82,17 +74,6 @@ const filesystem: FileSystemService = {
 export const defaultFileServices: FileServices = {
   filesystem,
   archive: { unzip: (data) => unzipSync(data) },
-  pdf: {
-    async extractText(data) {
-      const parser = new PDFParse({ data });
-      try {
-        const result = await parser.getText();
-        return result.pages.map((page) => ({ text: page.text }));
-      } finally {
-        await parser.destroy();
-      }
-    },
-  },
   excel: {
     read(data, options) {
       const workbook = XLSX.read(data, { type: "buffer" });

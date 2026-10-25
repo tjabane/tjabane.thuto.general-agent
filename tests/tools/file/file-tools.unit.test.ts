@@ -2,7 +2,9 @@ import { describe, expect, test } from "bun:test";
 import {
   type FileServices,
   ListDirectoryTool,
+  type MediaAnalysisRequest,
   ReadFileTool,
+  ReadMediaTool,
   UnzipTool,
 } from "../../../src/tools";
 
@@ -62,9 +64,6 @@ function fakeServices(
     archive: {
       unzip: () => options.archive ?? {},
     },
-    pdf: {
-      extractText: async () => [{ text: "page one" }, { text: "page two" }],
-    },
     excel: {
       read: () => [
         {
@@ -80,6 +79,41 @@ function fakeServices(
 }
 
 describe("file tools with injected services", () => {
+  test("read_media delegates media bytes and prompts to the analyzer", async () => {
+    let request: { kind: string; prompt: string; filename: string } | undefined;
+    const services = {
+      ...fakeServices({
+        files: { [`${root}\\photo.png`]: "image-bytes" },
+      }),
+      analyzer: {
+        analyze: async (input: MediaAnalysisRequest) => {
+          request = {
+            kind: input.kind,
+            prompt: input.prompt,
+            filename: input.filename,
+          };
+          return { analysis: "A photo of a mountain.", model: "fake-vision" };
+        },
+      },
+    };
+
+    await expect(
+      new ReadMediaTool(services).execute(context, {
+        path: `${root}\\photo.png`,
+        prompt: "What is shown?",
+      }),
+    ).resolves.toMatchObject({
+      mediaType: "image",
+      analysis: "A photo of a mountain.",
+      model: "fake-vision",
+    });
+    expect(request).toEqual({
+      kind: "image",
+      prompt: "What is shown?",
+      filename: "photo.png",
+    });
+  });
+
   test("list_directory uses the injected filesystem", async () => {
     const services = fakeServices({
       directories: {
@@ -113,24 +147,14 @@ describe("file tools with injected services", () => {
     ]);
   });
 
-  test("read_file delegates PDF and Excel parsing", async () => {
+  test("read_file delegates Excel parsing", async () => {
     const services = fakeServices({
       files: {
-        [`${root}\\document.pdf`]: "pdf",
         [`${root}\\book.xlsx`]: "excel",
       },
     });
     const tool = new ReadFileTool(services);
 
-    await expect(
-      tool.execute(context, { path: `${root}\\document.pdf` }),
-    ).resolves.toMatchObject({
-      format: "pdf",
-      content: JSON.stringify([
-        { page: 1, text: "page one" },
-        { page: 2, text: "page two" },
-      ]),
-    });
     await expect(
       tool.execute(context, { path: `${root}\\book.xlsx`, sheet: "Sheet1" }),
     ).resolves.toMatchObject({
@@ -147,5 +171,17 @@ describe("file tools with injected services", () => {
         ],
       },
     });
+  });
+
+  test("read_file redirects PDFs to read_media", async () => {
+    const services = fakeServices({
+      files: { [`${root}\\document.pdf`]: "pdf" },
+    });
+
+    await expect(
+      new ReadFileTool(services).execute(context, {
+        path: `${root}\\document.pdf`,
+      }),
+    ).rejects.toThrow("PDF files must be analyzed with read_media.");
   });
 });

@@ -1,0 +1,7 @@
+{
+  "name": "@general-agent/services",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": "./media.ts"
+}

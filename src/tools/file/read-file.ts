@@ -17,7 +17,7 @@ export type ReadFileInput = {
 export type ReadFileOutput = {
   path: string;
   mediaType: string;
-  format: "text" | "csv" | "pdf" | "excel";
+  format: "text" | "csv" | "excel";
   content:
     | string
     | {
@@ -65,7 +65,7 @@ export class ReadFileTool extends Tool<ReadFileInput, ReadFileOutput> {
   }
 
   readonly name = "read_file";
-  readonly description = "Read text, CSV, PDF, and Microsoft Excel files.";
+  readonly description = "Read text, CSV, and Microsoft Excel files.";
   readonly parameters = {
     type: "object" as const,
     properties: {
@@ -94,12 +94,7 @@ export class ReadFileTool extends Tool<ReadFileInput, ReadFileOutput> {
     const mediaType = mediaTypeFor(filePath);
     const extension = path.extname(filePath).toLowerCase();
     if (extension === ".pdf")
-      return this.readPdf(
-        filePath,
-        mediaType,
-        policy.maxOutputBytes,
-        filesystem,
-      );
+      throw new Error("PDF files must be analyzed with read_media.");
     if ([".xls", ".xlsx", ".xlsm"].includes(extension))
       return this.readExcel(filePath, mediaType, input, filesystem);
 
@@ -127,25 +122,6 @@ export class ReadFileTool extends Tool<ReadFileInput, ReadFileOutput> {
       truncated: result.truncated,
     };
   };
-
-  private async readPdf(
-    filePath: string,
-    mediaType: string,
-    maxOutputBytes: number,
-    filesystem: FileServices["filesystem"],
-  ): Promise<ReadFileOutput> {
-    const pages = (
-      await this.services.pdf.extractText(await filesystem.readFile(filePath))
-    ).map((page, index) => ({ page: index + 1, text: page.text }));
-    const truncated = truncateText(JSON.stringify(pages), maxOutputBytes);
-    return {
-      path: filePath,
-      mediaType,
-      format: "pdf",
-      content: truncated.content,
-      truncated: truncated.truncated,
-    };
-  }
 
   private async readExcel(
     filePath: string,

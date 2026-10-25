@@ -12,7 +12,6 @@ We need to build the following tools for handling files:
    - Read supported file contents, including:
      - Text files
      - CSV files
-     - PDF files
      - Microsoft Excel files
 
 4. **`read_media`**
