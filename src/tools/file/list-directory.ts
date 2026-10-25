@@ -26,7 +26,8 @@ export class ListDirectoryTool extends Tool<
   }
 
   readonly name = "list_directory";
-  readonly description = "List the contents of a directory.";
+  readonly description =
+    "List the contents of a directory, or return metadata for a file path.";
   readonly parameters = {
     type: "object" as const,
     properties: {
@@ -53,7 +54,15 @@ export class ListDirectoryTool extends Tool<
     const root = await resolveAllowedPath(input.path, policy, filesystem);
     const rootStats = await filesystem.stat(root);
     if (!rootStats.isDirectory()) {
-      throw new Error(`Not a directory: ${input.path}`);
+      return [
+        {
+          name: path.basename(root),
+          path: root,
+          type: "file",
+          size: rootStats.size,
+          modifiedAt: rootStats.mtime.toISOString(),
+        },
+      ];
     }
 
     const entries: DirectoryEntry[] = [];

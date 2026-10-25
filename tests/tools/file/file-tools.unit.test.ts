@@ -130,6 +130,23 @@ describe("file tools with injected services", () => {
     expect(result.map((entry) => entry.name)).toEqual(["nested", "notes.txt"]);
   });
 
+  test("list_directory returns metadata when given a file path", async () => {
+    const filePath = `${root}\\notes.txt`;
+    const services = fakeServices({ files: { [filePath]: "notes" } });
+
+    await expect(
+      new ListDirectoryTool(services).execute(context, { path: filePath }),
+    ).resolves.toEqual([
+      {
+        name: "notes.txt",
+        path: filePath,
+        type: "file",
+        size: 5,
+        modifiedAt: "2026-01-01T00:00:00.000Z",
+      },
+    ]);
+  });
+
   test("unzip uses the injected archive and filesystem services", async () => {
     const archivePath = `${root}\\archive.zip`;
     const services = fakeServices({
