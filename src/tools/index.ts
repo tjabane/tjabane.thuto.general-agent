@@ -6,3 +6,4 @@ export type {
   WebSearchResult,
 } from "./web-search";
 export { WebSearchTool } from "./web-search";
+export * from "./file";
