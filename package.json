@@ -12,6 +12,7 @@
     "eval:baseline": "bun run evals/baseline/index.ts",
     "eval:gaia": "bun run evals/gaia/index.ts",
     "eval:gaia:level1": "bun run evals/gaia/index.ts --provider ollama --level 1 --count 53 --split validation --concurrency 3",
+    "eval:gaia:level1:attachments": "bun run evals/gaia/index.ts --level 1 --attachments-only --count 11 --split validation --concurrency 3",
     "gaia:download": "bun run evals/gaia/download.ts",
     "format": "biome format --write .",
     "lint": "biome lint ."

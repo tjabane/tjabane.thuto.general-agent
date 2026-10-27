@@ -1,7 +1,14 @@
 import { mkdir } from "node:fs/promises";
 import { parseArgs } from "node:util";
 import { Agent } from "../../src/agent/agent";
-import { CalculatorTool, WebSearchTool } from "../../src/tools";
+import {
+  CalculatorTool,
+  ListDirectoryTool,
+  ReadFileTool,
+  ReadMediaTool,
+  UnzipTool,
+  WebSearchTool,
+} from "../../src/tools";
 import { createClient } from "../create-client";
 import {
   GAIA_Prompt,
@@ -19,8 +26,15 @@ function createGaiaAgent(provider?: string): Agent {
   return new Agent(
     client,
     GAIA_Prompt,
-    [new CalculatorTool(), new WebSearchTool()],
-    20,
+    [
+      new CalculatorTool(),
+      new WebSearchTool(),
+      new ListDirectoryTool(),
+      new ReadFileTool(),
+      new ReadMediaTool(),
+      new UnzipTool(),
+    ],
+    30,
   );
 }
 
@@ -52,7 +66,9 @@ if (import.meta.main) {
       split: { type: "string", default: "validation" },
       concurrency: { type: "string", default: "3" },
       attachments: { type: "boolean", default: false },
+      "attachments-only": { type: "boolean", default: false },
       provider: { type: "string" },
+      "task-id": { type: "string" },
     },
   });
 
@@ -64,6 +80,8 @@ if (import.meta.main) {
       split: values.split,
       concurrency: Number(values.concurrency),
       includeAttachments: values.attachments,
+      attachmentsOnly: values["attachments-only"],
+      taskId: values["task-id"],
     },
   );
 

@@ -9,13 +9,13 @@ export class Agent {
   private readonly client: LLMClient;
   private readonly instruction: string;
   private readonly tools: Tool[];
-  private readonly maxIterations: number = 10;
+  private readonly maxIterations: number = 30;
 
   constructor(
     client: LLMClient,
     instruction: string,
     tools: Tool[],
-    maxIterations: number = 10,
+    maxIterations: number = 30,
   ) {
     this.messages = [];
     this.client = client;
