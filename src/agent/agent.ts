@@ -3,6 +3,7 @@ import type { Tool } from "./contracts/tool";
 import { Message, ToolCall, ToolResult } from "./models/agent";
 import { AgentResult, Event, ExecutionContext } from "./models/agent-runtime";
 import { type LLMResponse, LlmRequest } from "./models/llm";
+import type { AgentHooks, HookDecision } from "./hooks/agent-hooks"
 
 export class Agent {
   private readonly messages: Message[];
@@ -10,18 +11,21 @@ export class Agent {
   private readonly instruction: string;
   private readonly tools: Tool[];
   private readonly maxIterations: number = 30;
+  private hooks: AgentHooks;
 
   constructor(
     client: LLMClient,
     instruction: string,
     tools: Tool[],
     maxIterations: number = 30,
+    hooks: AgentHooks
   ) {
     this.messages = [];
     this.client = client;
     this.instruction = instruction;
     this.tools = tools;
     this.maxIterations = maxIterations;
+    this.hooks = hooks
   }
 
   async run(
@@ -71,7 +75,7 @@ export class Agent {
       ) {
         throw new Error("Model returned an invalid tool-call batch.");
       }
-
+      const decision = (await this.hooks.beforeToolUse?.(toolCalls[0], context)) ?? { type: "continue", value: toolCalls[0] };
       const results = await this.executeTools(toolCalls, context);
 
       request = new LlmRequest(
