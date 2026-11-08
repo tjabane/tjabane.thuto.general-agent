@@ -4,6 +4,7 @@ import { Message, ToolCall, ToolResult } from "./models/agent";
 import { AgentResult, Event, ExecutionContext } from "./models/agent-runtime";
 import { type LLMResponse, LlmRequest } from "./models/llm";
 import type { AgentHooks, HookDecision } from "./hooks/agent-hooks"
+import { InMemorySessionStore, type SessionStore } from "./session/session-store";
 
 export class Agent {
   private readonly messages: Message[];
@@ -11,6 +12,7 @@ export class Agent {
   private readonly instruction: string;
   private readonly tools: Tool[];
   private readonly maxIterations: number = 30;
+  private readonly sessionStore: SessionStore;
   private hooks: AgentHooks;
 
   constructor(
@@ -18,20 +20,28 @@ export class Agent {
     instruction: string,
     tools: Tool[],
     maxIterations: number = 30,
-    hooks: AgentHooks
+    sessionStore: SessionStore = new InMemorySessionStore(),
+    hooks: AgentHooks,
   ) {
     this.messages = [];
     this.client = client;
     this.instruction = instruction;
     this.tools = tools;
     this.maxIterations = maxIterations;
+    this.sessionStore = sessionStore;
     this.hooks = hooks
   }
 
   async run(
     message: string,
-    context: ExecutionContext = new ExecutionContext(),
+    sessionId?: string,
+    context?: ExecutionContext,
   ): Promise<AgentResult> {
+    const session = await this.sessionStore.getOrCreate(sessionId);
+    if (!context) {
+      context = new ExecutionContext(session, this.sessionStore);
+    }
+
     const userMessage = new Message("user", message);
     const userEvent = new Event(context.runId, "user", userMessage);
     this.messages.push(userMessage);
@@ -56,6 +66,9 @@ export class Agent {
       if (modelOutput instanceof Message) {
         this.messages.push(modelOutput);
         context.result = modelOutput.content;
+        if(session) {
+          await this.sessionStore.saveSession(session);
+        }
         return new AgentResult(modelOutput.content, context);
       }
 
@@ -75,7 +88,7 @@ export class Agent {
       ) {
         throw new Error("Model returned an invalid tool-call batch.");
       }
-      const decision = (await this.hooks.beforeToolUse?.(toolCalls[0], context)) ?? { type: "continue", value: toolCalls[0] };
+
       const results = await this.executeTools(toolCalls, context);
 
       request = new LlmRequest(
