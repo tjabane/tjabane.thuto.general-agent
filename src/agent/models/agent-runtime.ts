@@ -1,5 +1,7 @@
 import { randomUUID } from "node:crypto";
-import type { OutputItem } from "./agent";
+import type { Session } from "../session/session";
+import type { SessionStore } from "../session/session-store";
+import type { ConversationItem } from "./agent";
 
 /**
  * Represents the execution context of a run. It contains a unique runId, a list of events that occur during the run,
@@ -8,6 +10,8 @@ import type { OutputItem } from "./agent";
  */
 export class ExecutionContext {
   readonly runId: string;
+  readonly session: Session | null = null;
+  readonly sessionStore: SessionStore | null = null;
   readonly fileAccess?: {
     readonly allowedRoots?: string[];
     readonly maxFileBytes?: number;
@@ -19,12 +23,40 @@ export class ExecutionContext {
   iteration: number;
   result: string | null;
 
-  constructor(options: { fileAccess?: ExecutionContext["fileAccess"] } = {}) {
+  constructor(
+    session: Session | null,
+    sessionStore: SessionStore,
+    options: { fileAccess?: ExecutionContext["fileAccess"] } = {},
+  ) {
     this.runId = randomUUID();
     this.fileAccess = options.fileAccess;
     this.events = [];
     this.iteration = 0;
     this.result = null;
+    this.session = session;
+    this.sessionStore = sessionStore;
+  }
+
+  /**
+   * Returns the current state of the execution context. If a session is associated with the execution context, it returns the state from the session; otherwise, it returns an empty object.
+   * @returns any The current state of the execution context.
+   */
+  getState(): any {
+    if (this.session) {
+      return this.session.state;
+    }
+    return {};
+  }
+
+  /**
+   * Returns the list of events that have occurred during the execution of the run. If a session is associated with the execution context, it returns the events from the session; otherwise, it returns an empty array.
+   * @returns Event[] The list of events that have occurred during the execution of the run.
+   */
+  getEvents(): Event[] {
+    if (this.session) {
+      return this.session.events;
+    }
+    return [];
   }
 
   /**
@@ -32,7 +64,10 @@ export class ExecutionContext {
    * @param event The event to add to the execution context.
    */
   addEvent(event: Event): void {
-    this.events.push(event);
+    if (this.session) {
+      this.session.events.push(event);
+      this.session.UpdatedAt = Date.now();
+    }
   }
 
   /**
@@ -53,18 +88,18 @@ export class Event {
   readonly runId: string;
   readonly timestamp: number;
   readonly author: string;
-  readonly content: OutputItem | OutputItem[];
+  readonly content: readonly ConversationItem[];
 
   constructor(
     runId: string,
     author: string,
-    content: OutputItem | OutputItem[],
+    content: ConversationItem | readonly ConversationItem[],
   ) {
     this.Id = randomUUID();
     this.timestamp = Date.now();
     this.runId = runId;
     this.author = author;
-    this.content = content;
+    this.content = Array.isArray(content) ? content : [content];
   }
 }
 

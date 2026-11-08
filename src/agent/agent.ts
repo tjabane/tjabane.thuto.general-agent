@@ -1,16 +1,20 @@
 import type { LLMClient } from "./clients/llm-client";
 import type { Tool } from "./contracts/tool";
+import type { AgentHooks, HookDecision } from "./hooks/agent-hooks";
 import { Message, ToolCall, ToolResult } from "./models/agent";
 import { AgentResult, Event, ExecutionContext } from "./models/agent-runtime";
 import { type LLMResponse, LlmRequest } from "./models/llm";
-import type { AgentHooks, HookDecision } from "./hooks/agent-hooks"
+import {
+  InMemorySessionStore,
+  type SessionStore,
+} from "./session/session-store";
 
 export class Agent {
-  private readonly messages: Message[];
   private readonly client: LLMClient;
   private readonly instruction: string;
   private readonly tools: Tool[];
   private readonly maxIterations: number = 30;
+  private readonly sessionStore: SessionStore;
   private hooks: AgentHooks;
 
   constructor(
@@ -18,30 +22,32 @@ export class Agent {
     instruction: string,
     tools: Tool[],
     maxIterations: number = 30,
-    hooks: AgentHooks
+    sessionStore: SessionStore = new InMemorySessionStore(),
+    hooks: AgentHooks = {},
   ) {
-    this.messages = [];
     this.client = client;
     this.instruction = instruction;
     this.tools = tools;
     this.maxIterations = maxIterations;
-    this.hooks = hooks
+    this.sessionStore = sessionStore;
+    this.hooks = hooks;
   }
 
   async run(
     message: string,
-    context: ExecutionContext = new ExecutionContext(),
+    sessionId?: string,
+    context?: ExecutionContext,
   ): Promise<AgentResult> {
+    const session = await this.sessionStore.getOrCreate(sessionId);
+    if (!context) {
+      context = new ExecutionContext(session, this.sessionStore);
+    }
+
     const userMessage = new Message("user", message);
     const userEvent = new Event(context.runId, "user", userMessage);
-    this.messages.push(userMessage);
     context.addEvent(userEvent);
 
-    let request: LlmRequest = new LlmRequest(
-      this.instruction,
-      this.tools,
-      this.messages,
-    );
+    let request = LlmRequest.fromContext(this.instruction, context, this.tools);
 
     for (let iteration = 0; iteration < this.maxIterations; iteration++) {
       context.incrementIteration();
@@ -54,13 +60,15 @@ export class Agent {
       context.addEvent(new Event(context.runId, "assistant", modelOutput));
 
       if (modelOutput instanceof Message) {
-        this.messages.push(modelOutput);
         context.result = modelOutput.content;
+        if (session) {
+          await this.sessionStore.saveSession(session);
+        }
         return new AgentResult(modelOutput.content, context);
       }
 
-      const toolCalls =
-        modelOutput instanceof ToolCall ? [modelOutput] : modelOutput;
+      const output: unknown = modelOutput;
+      const toolCalls: unknown = output instanceof ToolCall ? [output] : output;
 
       if (!Array.isArray(toolCalls)) {
         throw new Error("Model returned an unsupported response.");
@@ -70,21 +78,13 @@ export class Agent {
         throw new Error("Model returned an empty tool request.");
       }
 
-      if (
-        !toolCalls.every((item): item is ToolCall => item instanceof ToolCall)
-      ) {
+      if (!toolCalls.every((item) => item instanceof ToolCall)) {
         throw new Error("Model returned an invalid tool-call batch.");
       }
-      const decision = (await this.hooks.beforeToolUse?.(toolCalls[0], context)) ?? { type: "continue", value: toolCalls[0] };
-      const results = await this.executeTools(toolCalls, context);
 
-      request = new LlmRequest(
-        this.instruction,
-        this.tools,
-        this.messages,
-        results,
-        response.metadata.response_id,
-      );
+      await this.executeTools(toolCalls as ToolCall[], context);
+
+      request = LlmRequest.fromContext(this.instruction, context, this.tools);
     }
     throw new Error(
       `Agent stopped after ${this.maxIterations} iterations without a final answer.`,
@@ -125,9 +125,7 @@ export class Agent {
       }),
     );
 
-    for (const result of allResults) {
-      context.addEvent(new Event(context.runId, result.type, result));
-    }
+    context.addEvent(new Event(context.runId, "tool", allResults));
     return allResults;
   }
 }

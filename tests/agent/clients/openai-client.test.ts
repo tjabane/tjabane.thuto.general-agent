@@ -1,11 +1,21 @@
 import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
 import { OpenAIClient } from "../../../src/agent/clients/openai-client";
 import { Message, ToolCall, ToolResult } from "../../../src/agent/models/agent";
-import { LlmRequest } from "../../../src/agent/models/llm";
+import {
+  type ConversationTurn,
+  LlmRequest,
+} from "../../../src/agent/models/llm";
 import { CalculatorTool } from "../../../src/tools";
 
 const instruction = "You are a helpful assistant.";
 const tools = [new CalculatorTool()];
+
+function turn(
+  author: string,
+  ...items: ConversationTurn["items"]
+): ConversationTurn {
+  return { author, items };
+}
 let fetchSpy: ReturnType<typeof spyOn<typeof globalThis, "fetch">>;
 let errorSpy: ReturnType<typeof spyOn<typeof console, "error">>;
 let originalApiKey: string | undefined;
@@ -76,7 +86,9 @@ describe("OpenAIClient", () => {
     mockResponses(apiResponse([textOutput("Hello!")]));
     const client = new OpenAIClient("test-model");
     await client.generate(
-      new LlmRequest(instruction, tools, [new Message("user", "Hi")]),
+      new LlmRequest(instruction, tools, [
+        turn("user", new Message("user", "Hi")),
+      ]),
     );
 
     expect(requests).toHaveLength(1);
@@ -128,22 +140,37 @@ describe("OpenAIClient", () => {
     ]);
   });
 
-  test("chains all tool results, including failures, without resending messages", async () => {
+  test("sends complete history with tool calls and results", async () => {
     mockResponses(apiResponse([textOutput("Done.")], "resp-2"));
+    const calls = [
+      new ToolCall("calculator", "call-1", { expression: "2+2" }),
+      new ToolCall("calculator", "call-2", { expression: "1/0" }),
+    ];
     const response = await new OpenAIClient("test-model").generate(
-      new LlmRequest(
-        instruction,
-        tools,
-        [new Message("user", "Calculate both")],
-        [
+      new LlmRequest(instruction, tools, [
+        turn("user", new Message("user", "Calculate both")),
+        turn("assistant", ...calls),
+        turn(
+          "tool",
           new ToolResult("call-1", false, 4),
           new ToolResult("call-2", true, "Division by zero"),
-        ],
-        "resp-1",
-      ),
+        ),
+      ]),
     );
-    expect(requests[0]?.body.previous_response_id).toBe("resp-1");
     expect(requests[0]?.body.input).toEqual([
+      { type: "message", role: "user", content: "Calculate both" },
+      {
+        type: "function_call",
+        call_id: "call-1",
+        name: "calculator",
+        arguments: JSON.stringify({ expression: "2+2" }),
+      },
+      {
+        type: "function_call",
+        call_id: "call-2",
+        name: "calculator",
+        arguments: JSON.stringify({ expression: "1/0" }),
+      },
       {
         type: "function_call_output",
         call_id: "call-1",

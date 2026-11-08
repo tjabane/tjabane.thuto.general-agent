@@ -1,6 +1,5 @@
 import type { Tool } from "../../src/agent";
 import { Agent } from "../../src/agent/agent";
-import { ToolGatePlugin } from "../../src/agent/hooks/agent-hooks";
 import { CalculatorTool, WebSearchTool } from "../../src/tools";
 import { createClient } from "../create-client";
 
@@ -11,7 +10,7 @@ const message =
 if (import.meta.main) {
   const client = createClient("openai");
   const tools: Tool[] = [new CalculatorTool(), new WebSearchTool()];
-  const agent = new Agent(client, instruction, tools, 30, new ToolGatePlugin());
+  const agent = new Agent(client, instruction, tools, 30);
   const result = await agent.run(message);
   console.dir(result.response, { depth: null });
   console.dir(result.context, { depth: null });

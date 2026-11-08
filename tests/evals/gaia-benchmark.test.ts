@@ -38,7 +38,7 @@ describe("GAIA attachment evaluation", () => {
         includeAttachments: false,
         attachmentsOnly: true,
       }),
-    ).toEqual([problems[0]]);
+    ).toEqual([problems[0]!]);
     expect(hasGaiaAttachment(problems[0] as GaiaProblem)).toBe(true);
     expect(hasGaiaAttachment(problems[1] as GaiaProblem)).toBe(false);
   });

@@ -1,7 +1,7 @@
 export type Role = "user" | "assistant" | "system";
 
 export class Message {
-  readonly type:string = "message";
+  readonly type: string = "message";
   role: Role;
   content: string;
 
@@ -12,7 +12,7 @@ export class Message {
 }
 
 export class ToolCall {
-  readonly type:string = "tool_call";
+  readonly type: string = "tool_call";
   name: string;
   call_id: string;
   arguments: any;
@@ -25,7 +25,7 @@ export class ToolCall {
 }
 
 export class ToolResult {
-  readonly type:string = "tool_result";
+  readonly type: string = "tool_result";
   call_id: string;
   failed: boolean;
   response: any;
@@ -37,6 +37,6 @@ export class ToolResult {
   }
 }
 
-type ToolCallBatch = [ToolCall, ...ToolCall[]];
-
+export type ToolCallBatch = [ToolCall, ...ToolCall[]];
+export type ConversationItem = Message | ToolCall | ToolResult;
 export type ModelOutput = Message | ToolCallBatch;
