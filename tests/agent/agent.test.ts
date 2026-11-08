@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { Agent } from "../../src/agent/agent";
 import { Message, ToolCall, ToolResult } from "../../src/agent/models/agent";
-import { LLMResponse } from "../../src/agent/models/llm";
+import { LLMResponse, type LlmRequest } from "../../src/agent/models/llm";
 import { ScriptedLLMClient } from "./support/scripted-llm-client";
 import { TestTool } from "./support/test-tool";
 
@@ -11,6 +11,12 @@ function deferred() {
     resolve = resolvePromise;
   });
   return { promise, resolve };
+}
+
+function toolResults(request: LlmRequest): ToolResult[] {
+  return request.turns
+    .flatMap((turn) => turn.items)
+    .filter((item): item is ToolResult => item instanceof ToolResult);
 }
 
 describe("Agent direct task completion", () => {
@@ -27,24 +33,27 @@ describe("Agent direct task completion", () => {
     expect(result.context.iteration).toBe(1);
 
     expect(client.requests).toHaveLength(1);
-    expect(client.requests[0]).toEqual({
+    expect(client.requests[0]).toMatchObject({
       instruction: "You are a helpful assistant.",
       tools: [],
-      messages: [new Message("user", "Hi")],
-      toolResults: [],
-      previousResponseId: undefined,
+      turns: [
+        {
+          author: "user",
+          items: [new Message("user", "Hi")],
+        },
+      ],
     });
 
-    expect(result.context.events).toHaveLength(2);
-    expect(result.context.events[0]).toMatchObject({
+    expect(result.context.getEvents()).toHaveLength(2);
+    expect(result.context.getEvents()[0]).toMatchObject({
       runId: result.context.runId,
       author: "user",
-      content: new Message("user", "Hi"),
+      content: [new Message("user", "Hi")],
     });
-    expect(result.context.events[1]).toMatchObject({
+    expect(result.context.getEvents()[1]).toMatchObject({
       runId: result.context.runId,
       author: "assistant",
-      content: new Message("assistant", "Hello!"),
+      content: [new Message("assistant", "Hello!")],
     });
   });
 });
@@ -82,23 +91,27 @@ describe("Agent single-tool task completion", () => {
 
     expect(client.requests).toHaveLength(2);
     expect(client.requests[0]?.tools).toEqual([tool]);
-    expect(client.requests[1]?.previousResponseId).toBe("response-1");
-    expect(client.requests[1]?.toolResults).toEqual([
+    expect(toolResults(client.requests[1] as LlmRequest)).toEqual([
       new ToolResult("call-1", false, "Hello from the tool!"),
     ]);
 
     expect(
-      result.context.events.map(({ author, content }) => ({ author, content })),
+      result.context
+        .getEvents()
+        .map(({ author, content }) => ({ author, content })),
     ).toEqual([
-      { author: "user", content: new Message("user", "Use the echo tool") },
+      {
+        author: "user",
+        content: [new Message("user", "Use the echo tool")],
+      },
       { author: "assistant", content: [requestedToolCall] },
       {
-        author: "tool_result",
-        content: new ToolResult("call-1", false, "Hello from the tool!"),
+        author: "tool",
+        content: [new ToolResult("call-1", false, "Hello from the tool!")],
       },
       {
         author: "assistant",
-        content: new Message("assistant", "Tool complete."),
+        content: [new Message("assistant", "Tool complete.")],
       },
     ]);
   });
@@ -121,7 +134,6 @@ describe("Agent single-tool task completion", () => {
     expect(result.response).toBe("The requested tool is unavailable.");
     expect(result.context.iteration).toBe(2);
     expect(client.requests).toHaveLength(2);
-    expect(client.requests[1]?.previousResponseId).toBe("response-1");
     expect(client.requests[1]?.toolResults[0]).toMatchObject({
       call_id: "call-1",
       failed: true,
@@ -130,10 +142,10 @@ describe("Agent single-tool task completion", () => {
       "missing_tool",
     );
 
-    const toolResultEvent = result.context.events.find(
-      ({ author }) => author === "tool_result",
-    );
-    expect(toolResultEvent?.content).toMatchObject({
+    const toolResultEvent = result.context
+      .getEvents()
+      .find(({ author }) => author === "tool");
+    expect(toolResultEvent?.content[0]).toMatchObject({
       call_id: "call-1",
       failed: true,
     });
@@ -158,7 +170,6 @@ describe("Agent single-tool task completion", () => {
     expect(result.context.iteration).toBe(2);
     expect(tool.executions).toHaveLength(1);
     expect(client.requests).toHaveLength(2);
-    expect(client.requests[1]?.previousResponseId).toBe("response-1");
     expect(client.requests[1]?.toolResults[0]).toMatchObject({
       call_id: "call-1",
       failed: true,
@@ -167,10 +178,10 @@ describe("Agent single-tool task completion", () => {
       "Echo service unavailable",
     );
 
-    const toolResultEvent = result.context.events.find(
-      ({ author }) => author === "tool_result",
-    );
-    expect(toolResultEvent?.content).toMatchObject({
+    const toolResultEvent = result.context
+      .getEvents()
+      .find(({ author }) => author === "tool");
+    expect(toolResultEvent?.content[0]).toMatchObject({
       call_id: "call-1",
       failed: true,
     });
@@ -212,15 +223,15 @@ describe("Agent multiple-tool task completion", () => {
     expect(uppercaseTool.executions).toHaveLength(1);
     expect(lengthTool.executions).toHaveLength(1);
     expect(client.requests).toHaveLength(2);
-    expect(client.requests[1]?.previousResponseId).toBe("response-1");
     expect(client.requests[1]?.toolResults).toEqual([
       new ToolResult("call-1", false, "HELLO"),
       new ToolResult("call-2", false, 5),
     ]);
     expect(
-      result.context.events
-        .filter(({ author }) => author === "tool_result")
-        .map(({ content }) => content),
+      result.context
+        .getEvents()
+        .filter(({ author }) => author === "tool")
+        .flatMap(({ content }) => content),
     ).toEqual([
       new ToolResult("call-1", false, "HELLO"),
       new ToolResult("call-2", false, 5),
@@ -338,12 +349,11 @@ describe("Agent sequential tool rounds", () => {
       "second",
     ]);
     expect(client.requests).toHaveLength(3);
-    expect(client.requests[1]?.previousResponseId).toBe("response-1");
     expect(client.requests[1]?.toolResults).toEqual([
       new ToolResult("call-1", false, "first complete"),
     ]);
-    expect(client.requests[2]?.previousResponseId).toBe("response-2");
     expect(client.requests[2]?.toolResults).toEqual([
+      new ToolResult("call-1", false, "first complete"),
       new ToolResult("call-2", false, "second complete"),
     ]);
   });
@@ -466,9 +476,10 @@ describe("Agent tool-result integrity", () => {
 
     expect(result.response).toBe("Both tools completed.");
     expect(
-      result.context.events
-        .filter(({ author }) => author === "tool_result")
-        .map(({ content }) => content),
+      result.context
+        .getEvents()
+        .filter(({ author }) => author === "tool")
+        .flatMap(({ content }) => content),
     ).toEqual([
       new ToolResult("call-1", false, "first result"),
       new ToolResult("call-2", false, "second result"),
@@ -494,9 +505,10 @@ describe("Agent model-response handling", () => {
       (_context, { value }) => value,
     );
     const client = new ScriptedLLMClient([
-      new LLMResponse(new ToolCall("echo", "call-1", { value: "complete" }), {
-        response_id: "response-1",
-      }),
+      new LLMResponse(
+        new ToolCall("echo", "call-1", { value: "complete" }) as never,
+        { response_id: "response-1" },
+      ),
       new LLMResponse(new Message("assistant", "Task complete."), {}),
     ]);
     const agent = new Agent(client, "Use tools when needed.", [tool]);
@@ -512,7 +524,10 @@ describe("Agent model-response handling", () => {
 
   test("when the model returns a tool result, rejects the unsupported response", async () => {
     const client = new ScriptedLLMClient([
-      new LLMResponse(new ToolResult("call-1", false, "unexpected"), {}),
+      new LLMResponse(
+        new ToolResult("call-1", false, "unexpected") as never,
+        {},
+      ),
     ]);
     const agent = new Agent(client, "Answer the task.", [], 1);
 
@@ -540,7 +555,7 @@ describe("Agent model-response handling", () => {
         [
           new ToolCall("echo", "call-1", {}),
           new Message("assistant", "Unexpected message"),
-        ],
+        ] as never,
         { response_id: "response-1" },
       ),
     ]);
@@ -554,7 +569,7 @@ describe("Agent model-response handling", () => {
 
   test("when the model returns an empty tool request, rejects the invalid response", async () => {
     const client = new ScriptedLLMClient([
-      new LLMResponse([], { response_id: "response-1" }),
+      new LLMResponse([] as never, { response_id: "response-1" }),
     ]);
     const agent = new Agent(client, "Use tools when needed.", [], 1);
 

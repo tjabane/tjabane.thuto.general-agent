@@ -1,33 +1,43 @@
-
 import type { Tool } from "../contracts/tool";
-import type { Message, ModelOutput, ToolResult } from "./agent";
+import { type ConversationItem, type ModelOutput, ToolResult } from "./agent";
+import type { ExecutionContext } from "./agent-runtime";
+
+export type ConversationTurn = {
+  readonly author: string;
+  readonly items: readonly ConversationItem[];
+};
 
 export class LlmRequest {
-    readonly instruction: string;
-    readonly tools: Tool[];
-    readonly messages: Message[];
-    readonly toolResults: ToolResult[];
-    readonly previousResponseId?: string;
+  constructor(
+    readonly instruction: string,
+    readonly tools: readonly Tool[],
+    readonly turns: readonly ConversationTurn[] = [],
+  ) {}
 
-    constructor(instruction: string, tools: Tool[], messages: Message[], toolResults: ToolResult[] =[], previousResponseId?: string){
-        this.instruction = instruction;
-        this.messages = messages;
-        this.tools = tools;
-        this.toolResults = toolResults;
-        this.previousResponseId = previousResponseId;
-    }
+  get toolResults(): readonly ToolResult[] {
+    return this.turns
+      .flatMap((turn) => turn.items)
+      .filter((item): item is ToolResult => item instanceof ToolResult);
+  }
+
+  static fromContext(
+    instruction: string,
+    context: ExecutionContext,
+    tools: readonly Tool[],
+  ): LlmRequest {
+    const turns = context.getEvents().map((event) => ({
+      author: event.author,
+      items: event.content,
+    }));
+
+    return new LlmRequest(instruction, tools, turns);
+  }
 }
 
-// The client can return either a message or a tool call plus other metadata. How do I abstract the data coming out? What data do I care about...
 export class LLMResponse {
-    readonly error: string;
-    readonly data: ModelOutput;
-    readonly metadata: Record<string, any>;
-
-    constructor(data: ModelOutput, metadata: Record<string, any>, error: string = "")
-    {
-        this.data = data;
-        this.metadata = metadata
-        this.error = error;
-    }
+  constructor(
+    readonly data: ModelOutput,
+    readonly metadata: Record<string, any>,
+    readonly error: string = "",
+  ) {}
 }

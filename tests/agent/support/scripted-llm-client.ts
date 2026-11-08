@@ -1,5 +1,10 @@
 import type { LLMClient } from "../../../src/agent/clients/llm-client";
-import { Message, ToolResult } from "../../../src/agent/models/agent";
+import {
+  type ConversationItem,
+  Message,
+  ToolCall,
+  ToolResult,
+} from "../../../src/agent/models/agent";
 import { type LLMResponse, LlmRequest } from "../../../src/agent/models/llm";
 
 /** A deterministic LLM client that returns queued responses and records requests. */
@@ -28,12 +33,28 @@ export class ScriptedLLMClient implements LLMClient {
     return new LlmRequest(
       request.instruction,
       [...request.tools],
-      request.messages.map(({ role, content }) => new Message(role, content)),
-      request.toolResults.map(
-        ({ call_id, failed, response }) =>
-          new ToolResult(call_id, failed, structuredClone(response)),
-      ),
-      request.previousResponseId,
+      request.turns.map((turn) => ({
+        author: turn.author,
+        items: turn.items.map(ScriptedLLMClient.cloneItem),
+      })),
+    );
+  }
+
+  private static cloneItem(item: ConversationItem): ConversationItem {
+    if (item instanceof Message) {
+      return new Message(item.role, item.content);
+    }
+    if (item instanceof ToolCall) {
+      return new ToolCall(
+        item.name,
+        item.call_id,
+        structuredClone(item.arguments),
+      );
+    }
+    return new ToolResult(
+      item.call_id,
+      item.failed,
+      structuredClone(item.response),
     );
   }
 }

@@ -4,6 +4,7 @@ import path from "node:path";
 import type { Agent } from "../../src/agent/agent";
 import { ToolCall } from "../../src/agent/models/agent";
 import { ExecutionContext } from "../../src/agent/models/agent-runtime";
+import { InMemorySessionStore } from "../../src/agent/session/session-store";
 import {
   DEFAULT_DATA_ROOT,
   type GaiaLevel,
@@ -45,9 +46,9 @@ export type GaiaEvaluationReport = {
 };
 
 function toolCallNames(context: ExecutionContext): string[] {
-  return context.events
-    .map((event) => event.content)
-    .flatMap((content) => (Array.isArray(content) ? content : [content]))
+  return context
+    .getEvents()
+    .flatMap((event) => event.content)
     .filter((content): content is ToolCall => content instanceof ToolCall)
     .map((toolCall) => toolCall.name);
 }
@@ -100,9 +101,11 @@ async function evaluateProblem(
   const staged = hasGaiaAttachment(problem)
     ? await stageGaiaAttachment(problem, dataRoot, split)
     : undefined;
-  const context = new ExecutionContext(
-    staged ? { fileAccess: { allowedRoots: [staged.directory] } } : undefined,
-  );
+  const sessionStore = new InMemorySessionStore();
+  const session = await sessionStore.getOrCreate();
+  const context = new ExecutionContext(session, sessionStore, {
+    fileAccess: staged ? { allowedRoots: [staged.directory] } : undefined,
+  });
   const start = Date.now();
   const evaluation = (answer: string, error?: string): GaiaEvaluation => ({
     problem,
@@ -111,7 +114,7 @@ async function evaluateProblem(
     iterations: context.iteration,
     toolCalls: toolCallNames(context),
     durationMs: Date.now() - start,
-    trace: context.events.map((event) => ({
+    trace: context.getEvents().map((event) => ({
       id: event.Id,
       runId: event.runId,
       timestamp: event.timestamp,
@@ -125,7 +128,7 @@ async function evaluateProblem(
     const question = staged
       ? `${problem.Question}\n\nThe attached file is available at ${staged.path}. Use the file tools from this temporary workspace to inspect it.`
       : problem.Question;
-    const result = await createAgent().run(question, context);
+    const result = await createAgent().run(question, session.id, context);
     return evaluation(extractFinalAnswer(result.response));
   } catch (error) {
     return evaluation(

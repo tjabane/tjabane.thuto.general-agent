@@ -1,11 +1,21 @@
 import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
 import { OllamaClient } from "../../../src/agent/clients/ollama-client";
 import { Message, ToolCall, ToolResult } from "../../../src/agent/models/agent";
-import { LlmRequest } from "../../../src/agent/models/llm";
+import {
+  type ConversationTurn,
+  LlmRequest,
+} from "../../../src/agent/models/llm";
 import { CalculatorTool } from "../../../src/tools";
 
 const instruction = "You are a helpful assistant.";
 const tools = [new CalculatorTool()];
+
+function turn(
+  author: string,
+  ...items: ConversationTurn["items"]
+): ConversationTurn {
+  return { author, items };
+}
 
 let fetchSpy: ReturnType<typeof spyOn<typeof globalThis, "fetch">>;
 // biome-ignore lint/suspicious/noExplicitAny: request bodies are asserted against plain JSON
@@ -76,7 +86,9 @@ describe("OllamaClient", () => {
     const client = new OllamaClient("test-model", 0.2, "localhost:11434/");
 
     await client.generate(
-      new LlmRequest(instruction, tools, [new Message("user", "Hi")]),
+      new LlmRequest(instruction, tools, [
+        turn("user", new Message("user", "Hi")),
+      ]),
     );
 
     expect(requests[0]?.url).toBe("http://localhost:11434/api/chat");
@@ -106,7 +118,9 @@ describe("OllamaClient", () => {
     const client = new OllamaClient("test-model");
 
     const response = await client.generate(
-      new LlmRequest(instruction, tools, [new Message("user", "Hi")]),
+      new LlmRequest(instruction, tools, [
+        turn("user", new Message("user", "Hi")),
+      ]),
     );
 
     expect(response.error).toBe("");
@@ -122,7 +136,9 @@ describe("OllamaClient", () => {
     const client = new OllamaClient("test-model");
 
     const response = await client.generate(
-      new LlmRequest(instruction, tools, [new Message("user", "2 + 2?")]),
+      new LlmRequest(instruction, tools, [
+        turn("user", new Message("user", "2 + 2?")),
+      ]),
     );
 
     const toolCalls = response.data as ToolCall[];
@@ -138,7 +154,9 @@ describe("OllamaClient", () => {
     const client = new OllamaClient("test-model");
 
     const response = await client.generate(
-      new LlmRequest(instruction, tools, [new Message("user", "Both?")]),
+      new LlmRequest(instruction, tools, [
+        turn("user", new Message("user", "Both?")),
+      ]),
     );
 
     const toolCalls = response.data as ToolCall[];
@@ -152,23 +170,22 @@ describe("OllamaClient", () => {
   test("continues the conversation with every tool result", async () => {
     mockOllama(toolCallResponse("2 + 2", "3 * 3"), textResponse("4 and 9."));
     const client = new OllamaClient("test-model");
-    const messages = [new Message("user", "Both?")];
+    const userTurn = turn("user", new Message("user", "Both?"));
 
     const first = await client.generate(
-      new LlmRequest(instruction, tools, messages),
+      new LlmRequest(instruction, tools, [userTurn]),
     );
     const [sum, product] = first.data as ToolCall[];
     const second = await client.generate(
-      new LlmRequest(
-        instruction,
-        tools,
-        messages,
-        [
+      new LlmRequest(instruction, tools, [
+        userTurn,
+        turn("assistant", sum as ToolCall, product as ToolCall),
+        turn(
+          "tool",
           new ToolResult(sum?.call_id as string, false, 4),
           new ToolResult(product?.call_id as string, false, 9),
-        ],
-        first.metadata.response_id,
-      ),
+        ),
+      ]),
     );
 
     expect(requests[1]?.body.messages).toEqual([
@@ -206,47 +223,44 @@ describe("OllamaClient", () => {
     expect((second.data as Message).content).toBe("4 and 9.");
   });
 
-  test("forgets a conversation once its tool results are sent", async () => {
-    mockOllama(toolCallResponse("2 + 2"), textResponse("2 + 2 is 4."));
+  test("can replay complete history without client-side conversation state", async () => {
+    mockOllama(
+      toolCallResponse("2 + 2"),
+      textResponse("2 + 2 is 4."),
+      textResponse("2 + 2 is 4."),
+    );
     const client = new OllamaClient("test-model");
-    const messages = [new Message("user", "2 + 2?")];
+    const userTurn = turn("user", new Message("user", "2 + 2?"));
     const first = await client.generate(
-      new LlmRequest(instruction, tools, messages),
+      new LlmRequest(instruction, tools, [userTurn]),
     );
     const [toolCall] = first.data as ToolCall[];
-    const followUp = new LlmRequest(
-      instruction,
-      tools,
-      messages,
-      [new ToolResult(toolCall?.call_id as string, false, 4)],
-      first.metadata.response_id,
-    );
+    const followUp = new LlmRequest(instruction, tools, [
+      userTurn,
+      turn("assistant", toolCall as ToolCall),
+      turn("tool", new ToolResult(toolCall?.call_id as string, false, 4)),
+    ]);
 
-    await client.generate(followUp);
+    const firstFollowUp = await client.generate(followUp);
     const replay = await client.generate(followUp);
 
-    expect(replay.error).toContain(
-      `No conversation found for response ${first.metadata.response_id}.`,
-    );
-    expect(requests).toHaveLength(2);
+    expect(firstFollowUp.error).toBe("");
+    expect(replay.error).toBe("");
+    expect(requests[1]?.body.messages).toEqual(requests[2]?.body.messages);
   });
 
-  test("returns an error for tool results without a known conversation", async () => {
+  test("returns an error for a result without a matching tool call", async () => {
     mockOllama();
     const client = new OllamaClient("test-model");
 
     const response = await client.generate(
-      new LlmRequest(
-        instruction,
-        tools,
-        [],
-        [new ToolResult("call-1", false, 4)],
-        "unknown-response",
-      ),
+      new LlmRequest(instruction, tools, [
+        turn("tool", new ToolResult("call-1", false, 4)),
+      ]),
     );
 
     expect(response.error).toBe(
-      "Ollama request failed: No conversation found for response unknown-response.",
+      "Ollama request failed: No tool call found for result call-1.",
     );
     expect(requests).toHaveLength(0);
   });
@@ -256,7 +270,9 @@ describe("OllamaClient", () => {
     const client = new OllamaClient("missing-model");
 
     const response = await client.generate(
-      new LlmRequest(instruction, tools, [new Message("user", "Hi")]),
+      new LlmRequest(instruction, tools, [
+        turn("user", new Message("user", "Hi")),
+      ]),
     );
 
     expect(response.error).toBe(

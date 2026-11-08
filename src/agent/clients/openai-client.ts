@@ -1,8 +1,12 @@
 import OpenAI from "openai";
 import type { Tool } from "../contracts/tool";
-import { Message, ToolCall } from "../models/agent";
+import { Message, ToolCall, ToolResult } from "../models/agent";
+import {
+  type ConversationTurn,
+  LLMResponse,
+  type LlmRequest,
+} from "../models/llm";
 import type { LLMClient } from "./llm-client";
-import { LlmRequest, LLMResponse } from "../models/llm";
 
 export class OpenAIClient implements LLMClient {
   private readonly client: OpenAI;
@@ -15,25 +19,13 @@ export class OpenAIClient implements LLMClient {
 
   async generate(request: LlmRequest): Promise<LLMResponse> {
     try {
-      const { instruction, tools, messages, toolResults } = request;
+      const { instruction, tools, turns } = request;
       const response = await this.client.responses.create({
         model: this.model,
         instructions: instruction,
         tools: OpenAIClient.mapToolsToOpenAITools(tools),
         parallel_tool_calls: true,
-        previous_response_id: request.previousResponseId,
-        input: toolResults.length > 0
-          ? [
-              ...toolResults.map((toolResult) => ({
-                type: "function_call_output" as const,
-                call_id: toolResult.call_id,
-                output: JSON.stringify({
-                  failed: toolResult.failed,
-                  response: toolResult.response,
-                }),
-              })),
-            ]
-          : messages,
+        input: OpenAIClient.mapTurnsToOpenAIInput(turns),
       });
 
       const metadata = {
@@ -45,24 +37,61 @@ export class OpenAIClient implements LLMClient {
       );
 
       if (toolCalls?.length) {
-        const toolRequests = toolCalls.map(tool => new ToolCall(
-          tool.name,
-          tool.call_id,
-          JSON.parse(tool.arguments),
-        ));
-        return new LLMResponse(toolRequests, metadata);
+        const toolRequests = toolCalls.map(
+          (tool) =>
+            new ToolCall(tool.name, tool.call_id, JSON.parse(tool.arguments)),
+        );
+        return new LLMResponse(
+          toolRequests as [ToolCall, ...ToolCall[]],
+          metadata,
+        );
       }
 
       const message = new Message("assistant", response.output_text);
       return new LLMResponse(message, metadata);
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
       console.error(errorMessage);
       return new LLMResponse(new Message("assistant", ""), {}, errorMessage);
     }
   }
 
-  private static mapToolsToOpenAITools(tools: Tool[]): any[] {
+  private static mapTurnsToOpenAIInput(turns: readonly ConversationTurn[]) {
+    return turns.flatMap((turn) =>
+      turn.items.map((item) => {
+        if (item instanceof Message) {
+          return {
+            type: "message" as const,
+            role: item.role,
+            content: item.content,
+          };
+        }
+        if (item instanceof ToolCall) {
+          return {
+            type: "function_call" as const,
+            call_id: item.call_id,
+            name: item.name,
+            arguments: JSON.stringify(item.arguments),
+          };
+        }
+        if (item instanceof ToolResult) {
+          return {
+            type: "function_call_output" as const,
+            call_id: item.call_id,
+            output: JSON.stringify({
+              failed: item.failed,
+              response: item.response,
+            }),
+          };
+        }
+
+        throw new Error("Unsupported conversation item.");
+      }),
+    );
+  }
+
+  private static mapToolsToOpenAITools(tools: readonly Tool[]): any[] {
     return tools.map((tool) => ({
       type: "function",
       name: tool.name,

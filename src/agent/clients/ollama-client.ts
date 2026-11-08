@@ -1,7 +1,11 @@
 import { randomUUID } from "node:crypto";
 import type { Tool } from "../contracts/tool";
-import { Message, ToolCall } from "../models/agent";
-import { LLMResponse, type LlmRequest } from "../models/llm";
+import { Message, ToolCall, ToolResult } from "../models/agent";
+import {
+  type ConversationTurn,
+  LLMResponse,
+  type LlmRequest,
+} from "../models/llm";
 import type { LLMClient } from "./llm-client";
 
 type OllamaToolCall = {
@@ -33,13 +37,6 @@ export class OllamaClient implements LLMClient {
   private readonly baseUrl: string;
   private readonly model: string;
   private readonly temperature: number;
-  // Ollama's chat API is stateless, so the client keeps each tool-calling
-  // conversation, keyed by response id, to emulate previousResponseId chaining.
-  private readonly conversations = new Map<
-    string,
-    { messages: OllamaMessage[]; toolNames: Map<string, string> }
-  >();
-
   constructor(
     model = "glm-5.3-flash:cloud",
     temperature = 1,
@@ -93,21 +90,10 @@ export class OllamaClient implements LLMClient {
           ({ function: { name, arguments: args } }) =>
             new ToolCall(name, randomUUID(), args),
         );
-        this.conversations.set(responseId, {
-          messages: [
-            ...messages,
-            {
-              role: "assistant",
-              content: body.message.content,
-              tool_calls: ollamaToolCalls,
-            },
-          ],
-          toolNames: new Map(
-            toolCalls.map((toolCall) => [toolCall.call_id, toolCall.name]),
-          ),
-        });
-
-        return new LLMResponse(toolCalls, metadata);
+        return new LLMResponse(
+          toolCalls as [ToolCall, ...ToolCall[]],
+          metadata,
+        );
       }
 
       return new LLMResponse(
@@ -125,43 +111,70 @@ export class OllamaClient implements LLMClient {
     }
   }
 
-  /**
-   * Continues the stored conversation when the request carries tool results,
-   * otherwise starts a new one from the agent's messages.
-   */
   private buildMessages(request: LlmRequest): OllamaMessage[] {
-    const previous = request.previousResponseId
-      ? this.conversations.get(request.previousResponseId)
-      : undefined;
-
-    if (request.toolResults.length > 0) {
-      if (!previous) {
-        throw new Error(
-          `No conversation found for response ${request.previousResponseId}.`,
-        );
-      }
-
-      this.conversations.delete(request.previousResponseId as string);
-      return [
-        ...previous.messages,
-        ...request.toolResults.map((toolResult) => ({
-          role: "tool" as const,
-          tool_name: previous.toolNames.get(toolResult.call_id),
-          content: JSON.stringify({
-            failed: toolResult.failed,
-            response: toolResult.response,
-          }),
-        })),
-      ];
-    }
-
     return [
       { role: "system", content: request.instruction },
-      ...request.messages.map(({ role, content }) => ({ role, content })),
+      ...OllamaClient.mapTurns(request.turns),
     ];
   }
 
-  private static mapTools(tools: Tool[]): object[] {
+  private static mapTurns(turns: readonly ConversationTurn[]): OllamaMessage[] {
+    const toolNames = new Map<string, string>();
+    for (const turn of turns) {
+      for (const item of turn.items) {
+        if (item instanceof ToolCall) {
+          toolNames.set(item.call_id, item.name);
+        }
+      }
+    }
+
+    return turns.flatMap((turn) => {
+      const messages: OllamaMessage[] = [];
+      const toolCalls = turn.items.filter(
+        (item): item is ToolCall => item instanceof ToolCall,
+      );
+
+      for (const item of turn.items) {
+        if (item instanceof Message) {
+          messages.push({ role: item.role, content: item.content });
+        }
+      }
+
+      if (toolCalls.length > 0) {
+        messages.push({
+          role: "assistant",
+          content: "",
+          tool_calls: toolCalls.map((toolCall) => ({
+            function: {
+              name: toolCall.name,
+              arguments: toolCall.arguments,
+            },
+          })),
+        });
+      }
+
+      for (const item of turn.items) {
+        if (item instanceof ToolResult) {
+          const toolName = toolNames.get(item.call_id);
+          if (!toolName) {
+            throw new Error(`No tool call found for result ${item.call_id}.`);
+          }
+          messages.push({
+            role: "tool",
+            tool_name: toolName,
+            content: JSON.stringify({
+              failed: item.failed,
+              response: item.response,
+            }),
+          });
+        }
+      }
+
+      return messages;
+    });
+  }
+
+  private static mapTools(tools: readonly Tool[]): object[] {
     return tools.map((tool) => ({
       type: "function",
       function: {
