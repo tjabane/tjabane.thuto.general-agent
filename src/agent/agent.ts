@@ -1,9 +1,10 @@
 import type { LLMClient } from "./clients/llm-client";
 import type { Tool } from "./contracts/tool";
-import type { AgentHooks, HookDecision } from "./hooks/agent-hooks";
+import type { AgentHooks } from "./hooks/agent-hooks";
 import { Message, ToolCall, ToolResult } from "./models/agent";
 import { AgentResult, Event, ExecutionContext } from "./models/agent-runtime";
 import { type LLMResponse, LlmRequest } from "./models/llm";
+import { type TaskMemoryManager } from "./memory/task-memory-manager";
 import {
   InMemorySessionStore,
   type SessionStore,
@@ -15,6 +16,7 @@ export class Agent {
   private readonly tools: Tool[];
   private readonly maxIterations: number = 30;
   private readonly sessionStore: SessionStore;
+  private readonly memoryManager: TaskMemoryManager|undefined;
   private hooks: AgentHooks;
 
   constructor(
@@ -22,14 +24,16 @@ export class Agent {
     instruction: string,
     tools: Tool[],
     maxIterations: number = 30,
-    sessionStore: SessionStore = new InMemorySessionStore(),
     hooks: AgentHooks = {},
+    memoryManager: TaskMemoryManager|undefined,
+    sessionStore: SessionStore = new InMemorySessionStore(),
   ) {
     this.client = client;
     this.instruction = instruction;
     this.tools = tools;
     this.maxIterations = maxIterations;
     this.sessionStore = sessionStore;
+    this.memoryManager = memoryManager;
     this.hooks = hooks;
   }
 
