@@ -8,7 +8,10 @@ export type HookDecision<T> =
   | { type: "reject"; reason: string };
 
 export interface AgentHooks {
-  beforeLLM?(request:LlmRequest, context: ExecutionContext): Promise<LLMResponse | undefined>
+  beforeLLM?(
+    request:LlmRequest, 
+    context: ExecutionContext
+  ): Promise<LLMResponse | undefined>
   beforeToolUse?(
     toolCall: ToolCall,
     context: ExecutionContext,
