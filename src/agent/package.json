@@ -8,6 +8,7 @@
   "type": "module",
   "exports": "./index.ts",
   "dependencies": {
+    "@e2b/code-interpreter": "^2.9.1",
     "openai": "^7.30.1",
     "zod": "^4.6.5"
   }

@@ -1,4 +1,4 @@
-import type { ExecutionContext } from "../../../src/agent/contracts/execution-context";
+import type { ToolExecutionContext as ExecutionContext } from "../../../src/agent/contracts/tool";
 import { Tool } from "../../../src/agent/contracts/tool";
 
 export type TestToolExecution<TInput> = {

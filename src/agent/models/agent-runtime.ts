@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import type { Sandbox } from "@e2b/code-interpreter";
 import type { Session } from "../session/session";
 import type { SessionStore } from "../session/session-store";
 import type { ConversationItem } from "./agent";
@@ -22,6 +23,7 @@ export class ExecutionContext {
   events: Event[];
   iteration: number;
   result: string | null;
+  codeEnv: Sandbox | undefined;
 
   constructor(
     session: Session | null,

@@ -1,3 +1,4 @@
+import { Sandbox } from "@e2b/code-interpreter";
 import type { LLMClient } from "./clients/llm-client";
 import type { Tool } from "./contracts/tool";
 import type { AgentHooks, HookDecision } from "./hooks/agent-hooks";
@@ -16,6 +17,7 @@ export class Agent {
   private readonly maxIterations: number = 30;
   private readonly sessionStore: SessionStore;
   private hooks: AgentHooks;
+  private codeExecution: string | undefined;
 
   constructor(
     client: LLMClient,
@@ -24,6 +26,7 @@ export class Agent {
     maxIterations: number = 30,
     sessionStore: SessionStore = new InMemorySessionStore(),
     hooks: AgentHooks = {},
+    codeExecution: string | undefined,
   ) {
     this.client = client;
     this.instruction = instruction;
@@ -31,6 +34,7 @@ export class Agent {
     this.maxIterations = maxIterations;
     this.sessionStore = sessionStore;
     this.hooks = hooks;
+    this.codeExecution = codeExecution;
   }
 
   async run(
@@ -41,6 +45,10 @@ export class Agent {
     const session = await this.sessionStore.getOrCreate(sessionId);
     if (!context) {
       context = new ExecutionContext(session, this.sessionStore);
+    }
+
+    if (this.codeExecution === "e2b" && !context.codeEnv) {
+      context.codeEnv = await Sandbox.create();
     }
 
     const userMessage = new Message("user", message);
