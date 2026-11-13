@@ -12,7 +12,7 @@ export class CodeExecutionTool extends Tool<
   CodeExecutionInput,
   CodeExecutionOutput
 > {
-  readonly name = "code execution";
+  readonly name = "code_execution";
   readonly description =
     "Executes Python code in an isolated sandbox. Use it for calculations, data processing, testing snippets, and generating files. Returns the execution output. Code cannot access the host machine.";
   readonly parameters = {

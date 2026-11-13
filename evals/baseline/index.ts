@@ -1,23 +1,14 @@
 import type { Tool } from "../../src/agent";
 import { Agent } from "../../src/agent/agent";
-import {
-  CalculatorTool,
-  CreateTasksTool,
-  WebSearchTool,
-} from "../../src/tools";
+import { CodeExecutionTool } from "../../src/tools";
 import { createClient } from "../create-client";
 
-const instruction = "You are a helpful assistant. Answer concisely.";
-const message =
-  "If Eliud Kipchoge could maintain his record-making marathon pace indefinitely, how many thousand hours would it take him to run the distance between the Earth and the Moon at its closest approach? Please use the minimum perigee value on the Wikipedia page for the Moon when carrying out your calculation. Round your result to the nearest 1000 hours and do not use any comma separators if necessary.";
+const instruction = "You can execute Python code to solve problems.";
+const message = "What is the 100th Fibonacci number?";
 
 if (import.meta.main) {
   const client = createClient("openai");
-  const tools: Tool[] = [
-    new CalculatorTool(),
-    new WebSearchTool(),
-    new CreateTasksTool(),
-  ];
+  const tools: Tool[] = [new CodeExecutionTool()];
   const agent = new Agent(client, instruction, tools, 30);
   const result = await agent.run(message);
   console.dir(result.response, { depth: null });

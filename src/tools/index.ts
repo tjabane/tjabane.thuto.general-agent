@@ -1,5 +1,6 @@
 export type { CalculatorInput } from "./calculator/calculator";
 export { CalculatorTool, evaluateExpression } from "./calculator/calculator";
+export { CodeExecutionTool } from "./code/code-execution";
 export * from "./file";
 export type {
   CreateTasksInput,
