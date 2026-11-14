@@ -26,6 +26,7 @@
     "typescript": "^7"
   },
   "dependencies": {
+    "e2b": "^2.63.0",
     "hyparquet": "^1.31.3"
   }
 }

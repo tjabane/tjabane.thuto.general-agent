@@ -1,3 +1,4 @@
+import { Sandbox } from "@e2b/code-interpreter";
 import type { LLMClient } from "./clients/llm-client";
 import type { Tool } from "./contracts/tool";
 import type { AgentHooks, HookDecision } from "./hooks/agent-hooks";
@@ -16,6 +17,7 @@ export class Agent {
   private readonly maxIterations: number = 30;
   private readonly sessionStore: SessionStore;
   private hooks: AgentHooks;
+  private codeExecution: string | undefined;
 
   constructor(
     client: LLMClient,
@@ -24,6 +26,7 @@ export class Agent {
     maxIterations: number = 30,
     sessionStore: SessionStore = new InMemorySessionStore(),
     hooks: AgentHooks = {},
+    codeExecution: string | undefined = "e2b",
   ) {
     this.client = client;
     this.instruction = instruction;
@@ -31,6 +34,7 @@ export class Agent {
     this.maxIterations = maxIterations;
     this.sessionStore = sessionStore;
     this.hooks = hooks;
+    this.codeExecution = codeExecution;
   }
 
   async run(
@@ -43,48 +47,63 @@ export class Agent {
       context = new ExecutionContext(session, this.sessionStore);
     }
 
-    const userMessage = new Message("user", message);
-    const userEvent = new Event(context.runId, "user", userMessage);
-    context.addEvent(userEvent);
+    if (this.codeExecution === "e2b" && !context.codeEnv) {
+      context.codeEnv = await Sandbox.create();
+    }
 
-    let request = LlmRequest.fromContext(this.instruction, context, this.tools);
+    try {
+      const userMessage = new Message("user", message);
+      const userEvent = new Event(context.runId, "user", userMessage);
+      context.addEvent(userEvent);
 
-    for (let iteration = 0; iteration < this.maxIterations; iteration++) {
-      context.incrementIteration();
-      const response: LLMResponse = await this.client.generate(request);
-      if (response.error) {
-        console.error(response.error);
-        throw new Error(response.error);
-      }
-      const modelOutput = response.data;
-      context.addEvent(new Event(context.runId, "assistant", modelOutput));
+      let request = LlmRequest.fromContext(
+        this.instruction,
+        context,
+        this.tools,
+      );
 
-      if (modelOutput instanceof Message) {
-        context.result = modelOutput.content;
-        if (session) {
-          await this.sessionStore.saveSession(session);
+      for (let iteration = 0; iteration < this.maxIterations; iteration++) {
+        context.incrementIteration();
+        const response: LLMResponse = await this.client.generate(request);
+        if (response.error) {
+          console.error(response.error);
+          throw new Error(response.error);
         }
-        return new AgentResult(modelOutput.content, context);
+        const modelOutput = response.data;
+        context.addEvent(new Event(context.runId, "assistant", modelOutput));
+
+        if (modelOutput instanceof Message) {
+          context.result = modelOutput.content;
+          if (session) {
+            await this.sessionStore.saveSession(session);
+          }
+          return new AgentResult(modelOutput.content, context);
+        }
+
+        const output: unknown = modelOutput;
+        const toolCalls: unknown =
+          output instanceof ToolCall ? [output] : output;
+
+        if (!Array.isArray(toolCalls)) {
+          throw new Error("Model returned an unsupported response.");
+        }
+
+        if (toolCalls.length === 0) {
+          throw new Error("Model returned an empty tool request.");
+        }
+
+        if (!toolCalls.every((item) => item instanceof ToolCall)) {
+          throw new Error("Model returned an invalid tool-call batch.");
+        }
+
+        await this.executeTools(toolCalls as ToolCall[], context);
+
+        request = LlmRequest.fromContext(this.instruction, context, this.tools);
       }
-
-      const output: unknown = modelOutput;
-      const toolCalls: unknown = output instanceof ToolCall ? [output] : output;
-
-      if (!Array.isArray(toolCalls)) {
-        throw new Error("Model returned an unsupported response.");
+    } finally {
+      if (context.codeEnv) {
+        await context.codeEnv.kill();
       }
-
-      if (toolCalls.length === 0) {
-        throw new Error("Model returned an empty tool request.");
-      }
-
-      if (!toolCalls.every((item) => item instanceof ToolCall)) {
-        throw new Error("Model returned an invalid tool-call batch.");
-      }
-
-      await this.executeTools(toolCalls as ToolCall[], context);
-
-      request = LlmRequest.fromContext(this.instruction, context, this.tools);
     }
     throw new Error(
       `Agent stopped after ${this.maxIterations} iterations without a final answer.`,

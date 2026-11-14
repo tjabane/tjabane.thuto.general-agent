@@ -1,2 +1,4 @@
-export type { ExecutionContext } from "./contracts/execution-context";
-export { Tool } from "./contracts/tool";
+export {
+  Tool,
+  type ToolExecutionContext as ExecutionContext,
+} from "./contracts/tool";
