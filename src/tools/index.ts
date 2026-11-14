@@ -1,6 +1,8 @@
 export type { CalculatorInput } from "./calculator/calculator";
 export { CalculatorTool, evaluateExpression } from "./calculator/calculator";
+export { BashExecutionTool } from "./code/bash-execution";
 export { CodeExecutionTool } from "./code/code-execution";
+export { FileUploadTool } from "./code/upload-file";
 export * from "./file";
 export type {
   CreateTasksInput,
