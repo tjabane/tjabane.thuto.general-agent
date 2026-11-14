@@ -1,4 +1,17 @@
-import type { ExecutionContext } from "./execution-context";
+import type { Sandbox } from "@e2b/code-interpreter";
+
+/** The capabilities tools can use during an agent run. */
+export interface ToolExecutionContext {
+  readonly runId: string;
+  readonly fileAccess?: {
+    readonly allowedRoots?: string[];
+    readonly maxFileBytes?: number;
+    readonly maxOutputBytes?: number;
+    readonly maxEntries?: number;
+    readonly allowSymlinks?: boolean;
+  };
+  readonly codeEnv?: Sandbox;
+}
 
 type ToolParameters = {
   type: "object";
@@ -13,7 +26,7 @@ export abstract class Tool<TInput = any, TOutput = any> {
   abstract description: string;
   abstract parameters: ToolParameters;
   abstract execute: (
-    context: ExecutionContext,
+    context: ToolExecutionContext,
     input: TInput,
   ) => Promise<TOutput>;
 }
